@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
@@ -59,10 +59,21 @@ function EmptyState() {
 
 export function MarkdownViewer({ sections, phase }: MarkdownViewerProps) {
   const [copied, setCopied] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
 
   const fullContent = sections
     .map((s) => s.title + s.content)
     .join("")
+
+  // Auto-scroll to bottom when new content streams in
+  useEffect(() => {
+    if (scrollRef.current && phase === "generating") {
+      scrollRef.current.scrollTo({
+        top: scrollRef.current.scrollHeight,
+        behavior: "smooth",
+      })
+    }
+  }, [fullContent, phase])
 
   const handleCopy = useCallback(async () => {
     try {
@@ -84,7 +95,6 @@ export function MarkdownViewer({ sections, phase }: MarkdownViewerProps) {
     URL.revokeObjectURL(url)
   }, [fullContent])
 
-  // Empty state — before any generation
   if (phase === "idle") {
     return <EmptyState />
   }
@@ -128,7 +138,7 @@ export function MarkdownViewer({ sections, phase }: MarkdownViewerProps) {
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" ref={scrollRef}>
         <div className="px-6 py-5">
           <article className="prose prose-neutral max-w-none
             prose-headings:font-semibold prose-headings:text-neutral-900 prose-headings:tracking-tight
@@ -149,7 +159,6 @@ export function MarkdownViewer({ sections, phase }: MarkdownViewerProps) {
             </ReactMarkdown>
           </article>
 
-          {/* Blinking cursor when generating */}
           {phase === "generating" && (
             <span className="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-0.5 align-middle" />
           )}

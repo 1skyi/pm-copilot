@@ -1,5 +1,6 @@
 ﻿"use client"
 
+import { useEffect, useRef } from "react"
 import { WorkflowStep, WorkflowStepStatus } from "@/types"
 import { cn } from "@/lib/utils"
 import { Check, Loader2, Circle, XCircle } from "lucide-react"
@@ -31,12 +32,25 @@ const statusConfig: Record<
 }
 
 export function WorkflowPanel({ steps }: WorkflowPanelProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const runningIndex = steps.findIndex((s) => s.status === "RUNNING")
+
+  // Auto-scroll to running/completed step
+  useEffect(() => {
+    if (containerRef.current && runningIndex >= 0) {
+      const stepEl = containerRef.current.children[runningIndex] as HTMLElement
+      if (stepEl) {
+        stepEl.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+    }
+  }, [runningIndex])
+
   return (
     <div className="px-5 py-4">
       <h3 className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider mb-3">
         Workflow
       </h3>
-      <div className="space-y-0">
+      <div className="space-y-0" ref={containerRef}>
         {steps.map((step, index) => {
           const config = statusConfig[step.status]
           const Icon = config.icon
@@ -46,7 +60,6 @@ export function WorkflowPanel({ steps }: WorkflowPanelProps) {
 
           return (
             <div key={step.id} className="relative flex items-start gap-3">
-              {/* Connector line */}
               {!isLast && (
                 <div
                   className={cn(
@@ -56,7 +69,6 @@ export function WorkflowPanel({ steps }: WorkflowPanelProps) {
                 />
               )}
 
-              {/* Status icon */}
               <div
                 className={cn(
                   "relative z-10 mt-0.5 flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full bg-white",
@@ -73,7 +85,6 @@ export function WorkflowPanel({ steps }: WorkflowPanelProps) {
                 />
               </div>
 
-              {/* Step info */}
               <div className="flex-1 pb-4 min-w-0">
                 <p
                   className={cn(

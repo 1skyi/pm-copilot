@@ -56,7 +56,7 @@ export default function Home() {
   }, [])
 
   const handleSetOptimizeCallback = useCallback((cb: (() => void) | null) => {
-    setOptimizeCallback(() => cb)
+    setOptimizeCallback(cb)
   }, [])
 
   const handleOptimize = useCallback(() => {

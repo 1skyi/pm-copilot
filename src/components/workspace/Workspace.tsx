@@ -28,9 +28,12 @@ export function Workspace({
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const [placeholderIndex] = useState(
-    () => Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length)
-  )
+  const [placeholderIndex, setPlaceholderIndex] = useState(0)
+
+  // Pick random placeholder on client to avoid SSR hydration mismatch
+  useEffect(() => {
+    setPlaceholderIndex(Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length))
+  }, [])
 
   // Abort coordinator on unmount to prevent setState on unmounted component
   useEffect(() => {

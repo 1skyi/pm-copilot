@@ -24,17 +24,13 @@ export default function Home() {
       sidebar={<Sidebar />}
       workspace={
         <Workspace
-          onGenerate={() => {}}
           onStreamUpdate={handleStreamUpdate}
           onPhaseChange={handlePhaseChange}
           phase={phase}
         />
       }
       result={
-        <MarkdownViewer
-          sections={sections}
-          phase={phase}
-        />
+        <MarkdownViewer sections={sections} phase={phase} />
       }
     />
   )

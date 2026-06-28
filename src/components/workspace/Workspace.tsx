@@ -1,27 +1,21 @@
 ﻿"use client"
 
-import { useState, useCallback, useRef } from "react"
+import { useState, useCallback } from "react"
 import { Sparkles, Check, Loader2, Clock } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { WorkflowPanel } from "@/components/workflow/WorkflowPanel"
-import {
-  WORKFLOW_STEPS,
-  STREAMED_SECTIONS,
-  RECENT_IDEAS,
-  SAMPLE_PLACEHOLDERS,
-} from "@/constants"
+import { coordinator, CoordinatorCallbacks } from "@/lib/ai/coordinator"
+import { WORKFLOW_STEPS, RECENT_IDEAS, SAMPLE_PLACEHOLDERS } from "@/constants"
 import { WorkflowStep, GeneratePhase, StreamedSection } from "@/types"
 
 interface WorkspaceProps {
-  onGenerate: (sections: StreamedSection[]) => void
   onStreamUpdate: (sections: StreamedSection[]) => void
   onPhaseChange: (phase: GeneratePhase) => void
   phase: GeneratePhase
 }
 
 export function Workspace({
-  onGenerate,
   onStreamUpdate,
   onPhaseChange,
   phase,
@@ -31,7 +25,6 @@ export function Workspace({
   const [steps, setSteps] = useState<WorkflowStep[]>(
     WORKFLOW_STEPS.map((s) => ({ ...s, status: "PENDING" }))
   )
-  const timerRef = useRef<NodeJS.Timeout | null>(null)
 
   const [placeholderIndex] = useState(
     () => Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length)
@@ -42,56 +35,26 @@ export function Workspace({
 
     onPhaseChange("generating")
 
-    // Reset all steps to PENDING
-    const initialSteps: WorkflowStep[] = WORKFLOW_STEPS.map((s) => ({
-      ...s,
-      status: "PENDING",
-    }))
-    setSteps(initialSteps)
+    const ideaText = idea.trim() || projectName.trim() || "Untitled Project"
 
-    const streamedSoFar: StreamedSection[] = []
-    let currentIndex = 0
-
-    const advanceStep = () => {
-      if (currentIndex >= WORKFLOW_STEPS.length) {
-        // All done
+    const callbacks: CoordinatorCallbacks = {
+      onStepStart: (_step, allSteps) => {
+        setSteps(allSteps)
+      },
+      onStepComplete: (_step, _section, allSections) => {
+        onStreamUpdate(allSections)
+      },
+      onComplete: (allSections) => {
+        onStreamUpdate(allSections)
         onPhaseChange("completed")
-        return
-      }
-
-      const stepId = WORKFLOW_STEPS[currentIndex].id
-
-      // Set current step to RUNNING
-      setSteps((prev) =>
-        prev.map((s) =>
-          s.id === stepId ? { ...s, status: "RUNNING" } : s
-        )
-      )
-
-      // After a delay, mark as COMPLETED and stream content
-      const delay = 1200 + Math.random() * 800
-
-      timerRef.current = setTimeout(() => {
-        const section = STREAMED_SECTIONS.find((s) => s.stepId === stepId)
-        if (section) {
-          streamedSoFar.push(section)
-          onStreamUpdate([...streamedSoFar])
-        }
-
-        setSteps((prev) =>
-          prev.map((s) =>
-            s.id === stepId ? { ...s, status: "COMPLETED" } : s
-          )
-        )
-
-        currentIndex++
-        advanceStep()
-      }, delay)
+      },
+      onError: (_stepId, _error) => {
+        // Error state already reflected in workflow steps
+      },
     }
 
-    // Small initial delay before first step
-    timerRef.current = setTimeout(advanceStep, 400)
-  }, [phase, onPhaseChange, onStreamUpdate])
+    coordinator.execute(ideaText, callbacks)
+  }, [phase, idea, projectName, onPhaseChange, onStreamUpdate])
 
   const buttonContent = () => {
     switch (phase) {
@@ -168,7 +131,7 @@ export function Workspace({
         <WorkflowPanel steps={steps} />
       </div>
 
-      {/* Recent Ideas (only when idle) */}
+      {/* Recent Ideas */}
       {phase === "idle" && (
         <div className="px-5 py-3 border-t border-neutral-100">
           <h3 className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider mb-2">

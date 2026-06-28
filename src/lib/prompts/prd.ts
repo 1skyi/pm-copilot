@@ -1,11 +1,25 @@
 ﻿import { StreamedSection } from "@/types"
+import { getProvider, getConfig } from "@/lib/ai/providers"
+
+const SYSTEM_PROMPT = `You are a senior product designer. Create a product design overview for the given idea.
+
+Include:
+### Product Overview — one paragraph
+### Information Architecture — a code block showing the app structure tree
+### Design Principles — 3-4 bullet points
+### Key Screens — 3-4 screens with brief descriptions
+
+Output: Markdown. Keep it concise (300-500 words). Do NOT include a title heading.`
 
 export async function generatePRD(idea: string): Promise<StreamedSection> {
-  await new Promise((r) => setTimeout(r, 1800))
+  const provider = getProvider()
+  const config = getConfig()
+
+  const content = await provider.generate(SYSTEM_PROMPT, idea, config)
 
   return {
     stepId: "product-design",
     title: "## Product Design\n\n",
-    content: `### Product Overview\n\n**${idea}** — A comprehensive solution designed for modern teams.\n\n### Information Architecture\n\n\`\`\`\nHome\n├── Dashboard (KPIs & metrics)\n├── Workspace (main workflow)\n│   ├── Create\n│   ├── Manage\n│   └── Analyze\n├── Reports\n└── Settings\n\`\`\`\n\n### Design Principles\n\n- **Minimalist** — Less UI, more focus\n- **Responsive** — Works on all devices\n- **Accessible** — WCAG 2.1 compliant\n\n### Key Screens\n\n1. **Dashboard** — Overview with charts & quick actions\n2. **Workspace** — Primary interaction surface\n3. **Reports** — Data visualization & export\n\n`,
+    content: content + "\n\n",
   }
 }

@@ -1,11 +1,24 @@
 ﻿import { StreamedSection } from "@/types"
+import { getProvider, getConfig } from "@/lib/ai/providers"
+
+const SYSTEM_PROMPT = `You are an API architect. Design the REST API for the given product idea.
+
+Include:
+### RESTful Endpoints — a code block listing endpoints with method, path, and brief description
+### Authentication — specify auth method (JWT, OAuth, etc.)
+### Response Format — show a JSON example of the standard response envelope
+
+Output: Markdown. Keep it concise (200-400 words). Do NOT include a title heading.`
 
 export async function generateAPI(idea: string): Promise<StreamedSection> {
-  await new Promise((r) => setTimeout(r, 1500))
+  const provider = getProvider()
+  const config = getConfig()
+
+  const content = await provider.generate(SYSTEM_PROMPT, idea, config)
 
   return {
     stepId: "api",
     title: "## API Design\n\n",
-    content: `### RESTful Endpoints\n\n\`\`\`\nGET    /api/projects              → List projects (paginated)\nPOST   /api/projects              → Create project\nGET    /api/projects/:id          → Project details\nPUT    /api/projects/:id          → Update project\nDELETE /api/projects/:id          → Archive project\n\nGET    /api/items                 → List items (filtered)\nPOST   /api/items                 → Create item\nPUT    /api/items/:id             → Update item\nDELETE /api/items/:id             → Delete item\n\nGET    /api/tags                  → List tags\nPOST   /api/tags                  → Create tag\n\`\`\`\n\n### Authentication\n\n- Bearer token via \`Authorization\` header\n- JWT with refresh token rotation\n- Rate limit: 100 req/min per user\n\n### Response Format\n\n\`\`\`json\n{\n  "data": { ... },\n  "meta": { "page": 1, "total": 42 },\n  "error": null\n}\n\`\`\`\n\n`,
+    content: content + "\n\n",
   }
 }

@@ -1,11 +1,12 @@
 ﻿"use client"
 
 import { useState, useCallback } from "react"
-import { Sparkles, Check, Loader2, Clock } from "lucide-react"
+import { Sparkles, Check, Loader2, Clock, XCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { WorkflowPanel } from "@/components/workflow/WorkflowPanel"
 import { coordinator, CoordinatorCallbacks } from "@/lib/ai/coordinator"
+import { ProviderError } from "@/lib/ai/provider"
 import { WORKFLOW_STEPS, RECENT_IDEAS, SAMPLE_PLACEHOLDERS } from "@/constants"
 import { WorkflowStep, GeneratePhase, StreamedSection } from "@/types"
 
@@ -25,6 +26,7 @@ export function Workspace({
   const [steps, setSteps] = useState<WorkflowStep[]>(
     WORKFLOW_STEPS.map((s) => ({ ...s, status: "PENDING" }))
   )
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   const [placeholderIndex] = useState(
     () => Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length)
@@ -33,6 +35,7 @@ export function Workspace({
   const handleGenerate = useCallback(() => {
     if (phase !== "idle") return
 
+    setErrorMessage(null)
     onPhaseChange("generating")
 
     const ideaText = idea.trim() || projectName.trim() || "Untitled Project"
@@ -48,8 +51,11 @@ export function Workspace({
         onStreamUpdate(allSections)
         onPhaseChange("completed")
       },
-      onError: (_stepId, _error) => {
-        // Error state already reflected in workflow steps
+      onError: (_stepId, error) => {
+        if (error instanceof ProviderError && error.code === "missing_key") {
+          setErrorMessage(error.message)
+          onPhaseChange("idle")
+        }
       },
     }
 
@@ -115,6 +121,14 @@ export function Workspace({
             disabled={phase === "generating"}
           />
         </div>
+
+        {errorMessage && (
+          <div className="flex items-start gap-2 p-2.5 rounded-md bg-red-50 border border-red-100">
+            <XCircle className="h-3.5 w-3.5 text-red-500 mt-0.5 flex-shrink-0" />
+            <p className="text-xs text-red-600 leading-relaxed">{errorMessage}</p>
+          </div>
+        )}
+
         <Button
           onClick={handleGenerate}
           className="w-full h-8 text-sm gap-1.5 transition-all"

@@ -1,12 +1,28 @@
 ﻿import { StreamedSection } from "@/types"
+import { getProvider, getConfig } from "@/lib/ai/providers"
+
+const SYSTEM_PROMPT = `You are a senior product manager at a top tech company. Your task is to clarify a product idea.
+
+Given a product idea, ask and answer 3-5 key clarifying questions:
+- What is the core problem being solved?
+- Who are the target users?
+- What are the primary use cases?
+- What are the success metrics?
+- What are the key constraints or risks?
+
+Output format: Use Markdown. Start with a brief overview paragraph, then list the resolved questions as bullet points. Keep it concise (200-400 words). Do NOT include a title heading — that will be added separately.`
 
 export async function generateClarification(idea: string): Promise<StreamedSection> {
-  // Mock — Sprint3 替换为真实 AI 调用
-  await new Promise((r) => setTimeout(r, 1200))
+  const provider = getProvider()
+  const config = getConfig()
+
+  const userPrompt = `Product Idea: ${idea}\n\nPlease clarify this product idea by asking and answering key questions.`
+
+  const content = await provider.generate(SYSTEM_PROMPT, userPrompt, config)
 
   return {
     stepId: "clarification",
     title: "## Clarification\n\n",
-    content: `Let me clarify the product idea to ensure we build the right thing.\n\n**Idea:** ${idea}\n\n**Core Problem:** Users need a centralized solution to manage their workflow efficiently.\n\n**Target Users:** Product managers, developers, and stakeholders.\n\n**Key Questions Resolved:**\n- What is the primary use case? → Identified\n- Who are the end users? → Mapped\n- What are the success metrics? → Defined\n\n`,
+    content: content + "\n\n",
   }
 }

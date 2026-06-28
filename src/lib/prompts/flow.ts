@@ -1,11 +1,24 @@
 ﻿import { StreamedSection } from "@/types"
+import { getProvider, getConfig } from "@/lib/ai/providers"
+
+const SYSTEM_PROMPT = `You are a UX designer. Map out the key user flows for the given product idea.
+
+Include:
+### Primary Flow — a numbered list of steps for the main user journey
+### Secondary Flows — 2-3 shorter flows (e.g. edit, delete, search)
+### Edge Cases — 2-3 edge cases and how to handle them
+
+Output: Markdown. Keep it concise (200-400 words). Do NOT include a title heading.`
 
 export async function generateFlow(idea: string): Promise<StreamedSection> {
-  await new Promise((r) => setTimeout(r, 1400))
+  const provider = getProvider()
+  const config = getConfig()
+
+  const content = await provider.generate(SYSTEM_PROMPT, idea, config)
 
   return {
     stepId: "flow",
     title: "## User Flows\n\n",
-    content: `### Primary Flow\n\n1. User lands on dashboard\n2. User creates new ${idea.toLowerCase()} entry\n3. System validates input\n4. System processes & saves\n5. User receives confirmation\n6. User views results\n\n### Secondary Flows\n\n- **Edit Flow:** View → Edit → Validate → Save\n- **Delete Flow:** Select → Confirm → Archive\n- **Search Flow:** Input → Filter → Results → Action\n\n### Edge Cases\n\n- Invalid input → inline validation message\n- Network error → retry with exponential backoff\n- Concurrent edits → optimistic lock + conflict resolution\n\n`,
+    content: content + "\n\n",
   }
 }

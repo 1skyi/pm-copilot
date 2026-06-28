@@ -2,6 +2,7 @@
 import { WorkflowEngine, WorkflowStepId } from "./workflow-engine"
 import { PromptManager } from "./prompt-manager"
 import { MarkdownBuilder } from "./markdown-builder"
+import { ProviderError } from "./provider"
 
 export interface CoordinatorCallbacks {
   onStepStart: (step: WorkflowStep, steps: WorkflowStep[]) => void
@@ -22,10 +23,6 @@ export class Coordinator {
     this.builder = new MarkdownBuilder()
   }
 
-  /**
-   * Execute the full AI workflow for a given product idea.
-   * Progress is reported via callbacks — UI stays decoupled.
-   */
   async execute(idea: string, callbacks: CoordinatorCallbacks): Promise<void> {
     this.workflow.reset()
     this.builder.reset()
@@ -36,22 +33,17 @@ export class Coordinator {
     for (const stepId of stepIds) {
       if (this.aborted) break
 
-      // 1. Start step
       const step = this.workflow.startCurrentStep()
       if (!step) break
 
       callbacks.onStepStart(step, this.workflow.getSteps())
 
       try {
-        // 2. Execute prompt (mock delay inside)
         const section = await this.prompts.execute(stepId, idea)
 
         if (this.aborted) break
 
-        // 3. Build markdown
         this.builder.append(section)
-
-        // 4. Complete step
         this.workflow.completeCurrentStep()
         callbacks.onStepComplete(step, section, this.builder.getSections())
       } catch (error) {
@@ -60,7 +52,14 @@ export class Coordinator {
           stepId,
           error instanceof Error ? error : new Error(String(error))
         )
-        // Continue to next step even on error
+
+        // Fatal errors — stop the workflow
+        if (error instanceof ProviderError && error.code === "missing_key") {
+          this.aborted = true
+          break
+        }
+
+        // Non-fatal errors — skip to next step
         this.workflow.completeCurrentStep()
       }
     }
@@ -75,5 +74,4 @@ export class Coordinator {
   }
 }
 
-// Singleton — one brain for the entire app
 export const coordinator = new Coordinator()

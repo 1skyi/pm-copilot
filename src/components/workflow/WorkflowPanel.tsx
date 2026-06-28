@@ -2,7 +2,7 @@
 
 import { WorkflowStep, WorkflowStepStatus } from "@/types"
 import { cn } from "@/lib/utils"
-import { Check, Loader2, Clock, XCircle } from "lucide-react"
+import { Check, Loader2, Circle, XCircle } from "lucide-react"
 
 interface WorkflowPanelProps {
   steps: WorkflowStep[]
@@ -10,27 +10,23 @@ interface WorkflowPanelProps {
 
 const statusConfig: Record<
   WorkflowStepStatus,
-  { icon: React.ComponentType<{ className?: string }>; label: string; className: string }
+  { icon: React.ComponentType<{ className?: string }>; className: string }
 > = {
-  WAITING: {
-    icon: Clock,
-    label: "Waiting",
-    className: "text-neutral-300 bg-neutral-50",
+  PENDING: {
+    icon: Circle,
+    className: "text-neutral-300",
   },
   RUNNING: {
     icon: Loader2,
-    label: "Running",
-    className: "text-blue-500 bg-blue-50",
+    className: "text-blue-500",
   },
   COMPLETED: {
     icon: Check,
-    label: "Done",
-    className: "text-emerald-600 bg-emerald-50",
+    className: "text-emerald-500",
   },
   ERROR: {
     icon: XCircle,
-    label: "Error",
-    className: "text-red-500 bg-red-50",
+    className: "text-red-500",
   },
 }
 
@@ -45,37 +41,46 @@ export function WorkflowPanel({ steps }: WorkflowPanelProps) {
           const config = statusConfig[step.status]
           const Icon = config.icon
           const isLast = index === steps.length - 1
+          const isRunning = step.status === "RUNNING"
+          const isCompleted = step.status === "COMPLETED"
 
           return (
             <div key={step.id} className="relative flex items-start gap-3">
               {/* Connector line */}
               {!isLast && (
-                <div className="absolute left-[11px] top-6 bottom-0 w-px bg-neutral-200" />
+                <div
+                  className={cn(
+                    "absolute left-[11px] top-6 bottom-0 w-px",
+                    isCompleted ? "bg-emerald-200" : "bg-neutral-200"
+                  )}
+                />
               )}
 
               {/* Status icon */}
               <div
                 className={cn(
-                  "relative z-10 mt-0.5 flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full",
-                  config.className
+                  "relative z-10 mt-0.5 flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-full bg-white",
+                  isCompleted && "bg-emerald-50",
+                  isRunning && "bg-blue-50"
                 )}
               >
                 <Icon
                   className={cn(
-                    "h-3 w-3",
-                    step.status === "RUNNING" && "animate-spin"
+                    "h-3.5 w-3.5",
+                    config.className,
+                    isRunning && "animate-spin"
                   )}
                 />
               </div>
 
               {/* Step info */}
-              <div className="flex-1 pb-4">
+              <div className="flex-1 pb-4 min-w-0">
                 <p
                   className={cn(
-                    "text-sm",
-                    step.status === "COMPLETED"
-                      ? "text-neutral-500"
-                      : step.status === "RUNNING"
+                    "text-sm truncate",
+                    isCompleted
+                      ? "text-neutral-600"
+                      : isRunning
                         ? "text-neutral-900 font-medium"
                         : step.status === "ERROR"
                           ? "text-red-600"
@@ -84,9 +89,16 @@ export function WorkflowPanel({ steps }: WorkflowPanelProps) {
                 >
                   {step.name}
                 </p>
-                <span className="text-[10px] text-neutral-300">
-                  {config.label}
-                </span>
+                {isRunning && step.runningText && (
+                  <p className="text-[10px] text-blue-500 mt-0.5 animate-pulse">
+                    {step.runningText}
+                  </p>
+                )}
+                {!isRunning && (
+                  <p className="text-[10px] text-neutral-400 mt-0.5">
+                    {isCompleted ? "Completed" : step.status === "ERROR" ? "Error" : "Pending"}
+                  </p>
+                )}
               </div>
             </div>
           )

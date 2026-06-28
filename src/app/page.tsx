@@ -1,15 +1,41 @@
-﻿import { MainLayout } from "@/components/layout/MainLayout"
+﻿"use client"
+
+import { useState, useCallback } from "react"
+import { MainLayout } from "@/components/layout/MainLayout"
 import { Sidebar } from "@/components/layout/Sidebar"
 import { Workspace } from "@/components/workspace/Workspace"
 import { MarkdownViewer } from "@/components/markdown/MarkdownViewer"
-import { MOCK_MARKDOWN } from "@/constants"
+import { GeneratePhase, StreamedSection } from "@/types"
 
 export default function Home() {
+  const [phase, setPhase] = useState<GeneratePhase>("idle")
+  const [sections, setSections] = useState<StreamedSection[]>([])
+
+  const handleStreamUpdate = useCallback((newSections: StreamedSection[]) => {
+    setSections(newSections)
+  }, [])
+
+  const handlePhaseChange = useCallback((newPhase: GeneratePhase) => {
+    setPhase(newPhase)
+  }, [])
+
   return (
     <MainLayout
       sidebar={<Sidebar />}
-      workspace={<Workspace />}
-      result={<MarkdownViewer content={MOCK_MARKDOWN} />}
+      workspace={
+        <Workspace
+          onGenerate={() => {}}
+          onStreamUpdate={handleStreamUpdate}
+          onPhaseChange={handlePhaseChange}
+          phase={phase}
+        />
+      }
+      result={
+        <MarkdownViewer
+          sections={sections}
+          phase={phase}
+        />
+      }
     />
   )
 }

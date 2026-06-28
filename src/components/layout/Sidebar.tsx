@@ -21,7 +21,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 }
 
 export function Sidebar() {
-  const [activeId, setActiveId] = useState("dashboard")
+  const [activeId, setActiveId] = useState("projects")
 
   return (
     <div className="flex h-full flex-col">

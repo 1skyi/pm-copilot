@@ -116,9 +116,9 @@ export function MarkdownViewer({
   const [copied, setCopied] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  // Build full content: completed sections + active streaming section
+  // Build full content with dynamic titles so language switch works post-generation
   const completedContent = sections
-    .map((s) => s.title + s.content)
+    .map((s) => (SECTION_TITLES[s.stepId as WorkflowStepId]?.[language] ?? s.title) + s.content)
     .join("")
 
   let streamingBlock = ""
@@ -139,19 +139,24 @@ export function MarkdownViewer({
     }
   }, [fullContent])
 
+  const getFullText = useCallback(() => {
+    return sections
+      .map((s) => (SECTION_TITLES[s.stepId as WorkflowStepId]?.[language] ?? s.title) + s.content)
+      .join("")
+  }, [sections, language])
+
   const handleCopy = useCallback(async () => {
-    const copyText = sections.map((s) => s.title + s.content).join("")
     try {
-      await navigator.clipboard.writeText(copyText)
+      await navigator.clipboard.writeText(getFullText())
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
       // fallback
     }
-  }, [sections])
+  }, [getFullText])
 
   const handleExport = useCallback(() => {
-    const exportText = sections.map((s) => s.title + s.content).join("")
+    const exportText = getFullText()
     const blob = new Blob([exportText], { type: "text/markdown" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -159,7 +164,7 @@ export function MarkdownViewer({
     a.download = "pm-copilot-output.md"
     a.click()
     URL.revokeObjectURL(url)
-  }, [sections])
+  }, [getFullText])
 
   const t = UI[language]
 

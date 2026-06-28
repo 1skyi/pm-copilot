@@ -36,22 +36,55 @@ const SECTION_TITLES: Record<WorkflowStepId, Record<Language, string>> = {
   "ai-review": { en: "## AI Review\n\n", zh: "## AI审查\n\n" },
 }
 
-function EmptyState() {
+const UI: Record<Language, Record<string, string>> = {
+  en: {
+    title: "Result",
+    generating: "Generating...",
+    copy: "Copy",
+    copied: "Copied",
+    export: "Export",
+    thinking: "AI is thinking...",
+    emptyTitle: "PM Copilot",
+    emptyDesc: "Describe your product idea, and AI will automatically generate structured documents for you.",
+  },
+  zh: {
+    title: "生成结果",
+    generating: "生成中...",
+    copy: "复制",
+    copied: "已复制",
+    export: "导出",
+    thinking: "AI 正在思考...",
+    emptyTitle: "PM Copilot",
+    emptyDesc: "描述你的产品想法，AI 将自动生成结构化文档。",
+  },
+}
+
+const EMPTY_FEATURES_ZH = [
+  { icon: "FileText", label: "需求文档", desc: "结构化产品需求" },
+  { icon: "Layers", label: "产品设计", desc: "完整产品设计文档" },
+  { icon: "Database", label: "技术设计", desc: "数据库与 API 架构" },
+  { icon: "CheckCircle", label: "AI 审查", desc: "AI 驱动的质量评估" },
+]
+
+function EmptyState({ language }: { language: Language }) {
+  const t = UI[language]
+  const features = language === "zh" ? EMPTY_FEATURES_ZH : EMPTY_STATE_FEATURES
+
   return (
     <div className="flex h-full flex-col items-center justify-center px-8">
       <div className="flex items-center gap-2 mb-6">
         <Sparkles className="h-6 w-6 text-neutral-800" />
         <h1 className="text-xl font-semibold text-neutral-900 tracking-tight">
-          PM Copilot
+          {t.emptyTitle}
         </h1>
       </div>
 
       <p className="text-sm text-neutral-500 text-center mb-8 max-w-xs leading-relaxed">
-        Describe your product idea, and AI will automatically generate structured documents for you.
+        {t.emptyDesc}
       </p>
 
       <div className="grid grid-cols-2 gap-3 w-full max-w-sm">
-        {EMPTY_STATE_FEATURES.map((feat) => {
+        {features.map((feat) => {
           const Icon = featureIconMap[feat.icon]
           return (
             <div
@@ -128,8 +161,10 @@ export function MarkdownViewer({
     URL.revokeObjectURL(url)
   }, [sections])
 
+  const t = UI[language]
+
   if (phase === "idle") {
-    return <EmptyState />
+    return <EmptyState language={language} />
   }
 
   return (
@@ -137,11 +172,11 @@ export function MarkdownViewer({
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
         <div className="flex items-center gap-2">
-          <h2 className="text-sm font-semibold text-neutral-900">Result</h2>
+          <h2 className="text-sm font-semibold text-neutral-900">{t.title}</h2>
           {phase === "generating" && (
             <span className="flex items-center gap-1 text-[10px] text-blue-500">
               <span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
-              Generating...
+              {t.generating}
             </span>
           )}
         </div>
@@ -157,14 +192,14 @@ export function MarkdownViewer({
               ) : (
                 <Copy className="h-3 w-3" />
               )}
-              {copied ? "Copied" : "Copy"}
+              {copied ? t.copied : t.copy}
             </button>
             <button
               onClick={handleExport}
               className="flex items-center gap-1 px-2 py-1 rounded text-[10px] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 transition-colors"
             >
               <Download className="h-3 w-3" />
-              Export
+              {t.export}
             </button>
           </div>
         )}
@@ -200,7 +235,7 @@ export function MarkdownViewer({
           {phase === "generating" && !fullContent && (
             <div className="flex items-center gap-2 text-neutral-400 text-sm">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span>AI is thinking...</span>
+              <span>{t.thinking}</span>
             </div>
           )}
         </div>

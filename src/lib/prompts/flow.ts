@@ -14,7 +14,9 @@ export async function generateFlow(idea: string): Promise<StreamedSection> {
   const provider = getProvider()
   const config = getConfig()
 
-  const content = await provider.generate(SYSTEM_PROMPT, idea, config)
+  const userPrompt = `Product Idea: ${idea}\n\nPlease map out the key user flows for this product idea.`
+
+  const content = await provider.generate(SYSTEM_PROMPT, userPrompt, config)
 
   return {
     stepId: "flow",

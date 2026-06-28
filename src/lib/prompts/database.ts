@@ -14,7 +14,9 @@ export async function generateDatabase(idea: string): Promise<StreamedSection> {
   const provider = getProvider()
   const config = getConfig()
 
-  const content = await provider.generate(SYSTEM_PROMPT, idea, config)
+  const userPrompt = `Product Idea: ${idea}\n\nPlease design the database schema for this product idea.`
+
+  const content = await provider.generate(SYSTEM_PROMPT, userPrompt, config)
 
   return {
     stepId: "database",

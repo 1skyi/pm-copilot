@@ -15,7 +15,9 @@ export async function generatePRD(idea: string): Promise<StreamedSection> {
   const provider = getProvider()
   const config = getConfig()
 
-  const content = await provider.generate(SYSTEM_PROMPT, idea, config)
+  const userPrompt = `Product Idea: ${idea}\n\nPlease create a product design overview for this product idea.`
+
+  const content = await provider.generate(SYSTEM_PROMPT, userPrompt, config)
 
   return {
     stepId: "product-design",

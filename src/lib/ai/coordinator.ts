@@ -59,8 +59,8 @@ export class Coordinator {
           break
         }
 
-        // Non-fatal errors — skip to next step
-        this.workflow.completeCurrentStep()
+        // Non-fatal errors — skip to next step without overwriting ERROR status
+        this.workflow.skipCurrentStep()
       }
     }
 

@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect } from "react"
 import { Sparkles, Check, Loader2, Clock, XCircle } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -31,6 +31,13 @@ export function Workspace({
   const [placeholderIndex] = useState(
     () => Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length)
   )
+
+  // Abort coordinator on unmount to prevent setState on unmounted component
+  useEffect(() => {
+    return () => {
+      coordinator.abort()
+    }
+  }, [])
 
   const handleGenerate = useCallback(() => {
     if (phase !== "idle") return

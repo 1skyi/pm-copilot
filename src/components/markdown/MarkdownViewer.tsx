@@ -4,13 +4,17 @@ import { useState, useCallback, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { cn } from "@/lib/utils"
-import { Sparkles, Copy, Download, Check, FileText, Layers, Database, CheckCircle } from "lucide-react"
-import { GeneratePhase, StreamedSection } from "@/types"
+import { Sparkles, Copy, Download, Check, FileText, Layers, Database, CheckCircle, Loader2 } from "lucide-react"
+import { GeneratePhase, StreamedSection, Language } from "@/types"
+import { WorkflowStepId } from "@/lib/ai/workflow-engine"
 import { EMPTY_STATE_FEATURES } from "@/constants"
 
 interface MarkdownViewerProps {
   sections: StreamedSection[]
   phase: GeneratePhase
+  streamingContent: Record<string, string>
+  activeStreamingStep: WorkflowStepId | null
+  language: Language
 }
 
 const featureIconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -18,6 +22,18 @@ const featureIconMap: Record<string, React.ComponentType<{ className?: string }>
   Layers,
   Database,
   CheckCircle,
+}
+
+const SECTION_TITLES: Record<WorkflowStepId, Record<Language, string>> = {
+  clarification: { en: "## Clarification\n\n", zh: "## 需求澄清\n\n" },
+  requirement: { en: "## Requirements\n\n", zh: "## 需求文档\n\n" },
+  "product-design": { en: "## Product Design\n\n", zh: "## 产品设计\n\n" },
+  flow: { en: "## User Flows\n\n", zh: "## 用户流程\n\n" },
+  database: { en: "## Database Schema\n\n", zh: "## 数据库设计\n\n" },
+  api: { en: "## API Design\n\n", zh: "## API设计\n\n" },
+  test: { en: "## Test Plan\n\n", zh: "## 测试计划\n\n" },
+  "dev-prompt": { en: "## Development Prompt\n\n", zh: "## 开发指南\n\n" },
+  "ai-review": { en: "## AI Review\n\n", zh: "## AI审查\n\n" },
 }
 
 function EmptyState() {
@@ -57,43 +73,60 @@ function EmptyState() {
   )
 }
 
-export function MarkdownViewer({ sections, phase }: MarkdownViewerProps) {
+export function MarkdownViewer({
+  sections,
+  phase,
+  streamingContent,
+  activeStreamingStep,
+  language,
+}: MarkdownViewerProps) {
   const [copied, setCopied] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const fullContent = sections
+  // Build full content: completed sections + active streaming section
+  const completedContent = sections
     .map((s) => s.title + s.content)
     .join("")
 
-  // Auto-scroll to bottom when new content streams in
+  let streamingBlock = ""
+  if (activeStreamingStep && streamingContent[activeStreamingStep]) {
+    const title = SECTION_TITLES[activeStreamingStep]?.[language] ?? `## ${activeStreamingStep}\n\n`
+    streamingBlock = title + streamingContent[activeStreamingStep]
+  }
+
+  const fullContent = completedContent + streamingBlock
+
+  // Auto-scroll during generation
   useEffect(() => {
-    if (scrollRef.current && phase === "generating") {
+    if (scrollRef.current) {
       scrollRef.current.scrollTo({
         top: scrollRef.current.scrollHeight,
         behavior: "smooth",
       })
     }
-  }, [fullContent, phase])
+  }, [fullContent])
 
   const handleCopy = useCallback(async () => {
+    const copyText = sections.map((s) => s.title + s.content).join("")
     try {
-      await navigator.clipboard.writeText(fullContent)
+      await navigator.clipboard.writeText(copyText)
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
       // fallback
     }
-  }, [fullContent])
+  }, [sections])
 
   const handleExport = useCallback(() => {
-    const blob = new Blob([fullContent], { type: "text/markdown" })
+    const exportText = sections.map((s) => s.title + s.content).join("")
+    const blob = new Blob([exportText], { type: "text/markdown" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
     a.download = "pm-copilot-output.md"
     a.click()
     URL.revokeObjectURL(url)
-  }, [fullContent])
+  }, [sections])
 
   if (phase === "idle") {
     return <EmptyState />
@@ -113,7 +146,7 @@ export function MarkdownViewer({ sections, phase }: MarkdownViewerProps) {
           )}
         </div>
 
-        {fullContent && (
+        {sections.length > 0 && (
           <div className="flex items-center gap-1">
             <button
               onClick={handleCopy}
@@ -143,8 +176,7 @@ export function MarkdownViewer({ sections, phase }: MarkdownViewerProps) {
           <article className="prose prose-neutral max-w-none
             prose-headings:font-semibold prose-headings:text-neutral-900 prose-headings:tracking-tight
             prose-h1:text-xl prose-h2:text-lg prose-h3:text-base
-            prose-p:text-neutral-600 prose-p:leading-relaxed
-            prose-p:text-base
+            prose-p:text-neutral-600 prose-p:leading-relaxed prose-p:text-base
             prose-a:text-neutral-800 prose-a:underline prose-a:underline-offset-2
             prose-strong:text-neutral-800 prose-strong:font-semibold
             prose-code:text-neutral-700 prose-code:bg-neutral-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs
@@ -159,8 +191,17 @@ export function MarkdownViewer({ sections, phase }: MarkdownViewerProps) {
             </ReactMarkdown>
           </article>
 
-          {phase === "generating" && (
+          {/* Blinking cursor during active streaming */}
+          {activeStreamingStep && (
             <span className="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-0.5 align-middle" />
+          )}
+
+          {/* Placeholder when generating but no content yet */}
+          {phase === "generating" && !fullContent && (
+            <div className="flex items-center gap-2 text-neutral-400 text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>AI is thinking...</span>
+            </div>
           )}
         </div>
       </div>

@@ -1,26 +1,19 @@
-﻿import { StreamedSection } from "@/types"
+﻿import { StreamedSection, Language } from "@/types"
 import { getProvider, getConfig } from "@/lib/ai/providers"
 
-const SYSTEM_PROMPT = `You are a UX designer. Map out the key user flows for the given product idea.
+const PROMPTS: Record<Language, string> = {
+  en: `You are a UX designer. Map out key user flows. Include: ### Primary Flow (numbered steps), ### Secondary Flows (2-3 shorter flows), ### Edge Cases (2-3 cases). Markdown. 200-400 words. No title heading.`,
+  zh: `你是一位UX设计师。绘制关键用户流程。包含：### 主要流程（编号步骤），### 次要流程（2-3个短流程），### 边界情况（2-3个）。Markdown格式。200-400字。不要包含标题。`,
+}
 
-Include:
-### Primary Flow — a numbered list of steps for the main user journey
-### Secondary Flows — 2-3 shorter flows (e.g. edit, delete, search)
-### Edge Cases — 2-3 edge cases and how to handle them
-
-Output: Markdown. Keep it concise (200-400 words). Do NOT include a title heading.`
-
-export async function generateFlow(idea: string): Promise<StreamedSection> {
+export async function generateFlow(idea: string, language: Language = "en"): Promise<StreamedSection> {
   const provider = getProvider()
   const config = getConfig()
-
-  const userPrompt = `Product Idea: ${idea}\n\nPlease map out the key user flows for this product idea.`
-
-  const content = await provider.generate(SYSTEM_PROMPT, userPrompt, config)
-
+  const userPrompt = language === "zh" ? `产品想法：${idea}` : idea
+  const content = await provider.generate(PROMPTS[language], userPrompt, config)
   return {
     stepId: "flow",
-    title: "## User Flows\n\n",
+    title: language === "zh" ? "## 用户流程\n\n" : "## User Flows\n\n",
     content: content + "\n\n",
   }
 }

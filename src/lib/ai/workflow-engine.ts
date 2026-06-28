@@ -7,6 +7,8 @@ export const WORKFLOW_STEP_IDS = [
   "flow",
   "database",
   "api",
+  "test",
+  "dev-prompt",
   "ai-review",
 ] as const
 
@@ -19,6 +21,8 @@ const STEP_NAMES: Record<WorkflowStepId, string> = {
   flow: "Flow",
   database: "Database",
   api: "API",
+  test: "Test",
+  "dev-prompt": "Development Prompt",
   "ai-review": "AI Review",
 }
 
@@ -29,6 +33,8 @@ const RUNNING_TEXTS: Record<WorkflowStepId, string> = {
   flow: "Mapping user flows...",
   database: "Designing database schema...",
   api: "Defining API endpoints...",
+  test: "Generating test cases...",
+  "dev-prompt": "Compiling development prompt...",
   "ai-review": "Reviewing output quality...",
 }
 

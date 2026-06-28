@@ -1,26 +1,19 @@
-﻿import { StreamedSection } from "@/types"
+﻿import { StreamedSection, Language } from "@/types"
 import { getProvider, getConfig } from "@/lib/ai/providers"
 
-const SYSTEM_PROMPT = `You are an API architect. Design the REST API for the given product idea.
+const PROMPTS: Record<Language, string> = {
+  en: `You are an API architect. Design REST API. Include: ### RESTful Endpoints (code block: method, path, description), ### Authentication (JWT/OAuth), ### Response Format (JSON example). Markdown. 200-400 words. No title heading.`,
+  zh: `你是一位API架构师。设计REST API。包含：### RESTful接口（代码块：方法、路径、描述），### 认证方式（JWT/OAuth），### 响应格式（JSON示例）。Markdown格式。200-400字。不要包含标题。`,
+}
 
-Include:
-### RESTful Endpoints — a code block listing endpoints with method, path, and brief description
-### Authentication — specify auth method (JWT, OAuth, etc.)
-### Response Format — show a JSON example of the standard response envelope
-
-Output: Markdown. Keep it concise (200-400 words). Do NOT include a title heading.`
-
-export async function generateAPI(idea: string): Promise<StreamedSection> {
+export async function generateAPI(idea: string, language: Language = "en"): Promise<StreamedSection> {
   const provider = getProvider()
   const config = getConfig()
-
-  const userPrompt = `Product Idea: ${idea}\n\nPlease design the REST API for this product idea.`
-
-  const content = await provider.generate(SYSTEM_PROMPT, userPrompt, config)
-
+  const userPrompt = language === "zh" ? `产品想法：${idea}` : idea
+  const content = await provider.generate(PROMPTS[language], userPrompt, config)
   return {
     stepId: "api",
-    title: "## API Design\n\n",
+    title: language === "zh" ? "## API设计\n\n" : "## API Design\n\n",
     content: content + "\n\n",
   }
 }

@@ -1,46 +1,52 @@
 ﻿"use client"
 
 import { useState, useCallback, useEffect } from "react"
-import { Sparkles, Check, Loader2, Clock, XCircle } from "lucide-react"
+import { Sparkles, Check, Loader2, Clock, XCircle, Languages } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { WorkflowPanel } from "@/components/workflow/WorkflowPanel"
 import { coordinator, CoordinatorCallbacks } from "@/lib/ai/coordinator"
 import { ProviderError } from "@/lib/ai/provider"
-import { WORKFLOW_STEPS, RECENT_IDEAS, SAMPLE_PLACEHOLDERS } from "@/constants"
-import { WorkflowStep, GeneratePhase, StreamedSection } from "@/types"
+import { WorkflowStepId } from "@/lib/ai/workflow-engine"
+import { WORKFLOW_STEPS, WORKFLOW_STEPS_ZH, RECENT_IDEAS, SAMPLE_PLACEHOLDERS } from "@/constants"
+import { WorkflowStep, GeneratePhase, StreamedSection, Language } from "@/types"
 
 interface WorkspaceProps {
   onStreamUpdate: (sections: StreamedSection[]) => void
+  onStreamChunk: (stepId: WorkflowStepId, delta: string) => void
   onPhaseChange: (phase: GeneratePhase) => void
   phase: GeneratePhase
+  language: Language
+  onLanguageChange: (lang: Language) => void
 }
 
 export function Workspace({
   onStreamUpdate,
+  onStreamChunk,
   onPhaseChange,
   phase,
+  language,
+  onLanguageChange,
 }: WorkspaceProps) {
   const [projectName, setProjectName] = useState("")
   const [idea, setIdea] = useState("")
+  const stepTemplates = language === "zh" ? WORKFLOW_STEPS_ZH : WORKFLOW_STEPS
   const [steps, setSteps] = useState<WorkflowStep[]>(
-    WORKFLOW_STEPS.map((s) => ({ ...s, status: "PENDING" }))
+    stepTemplates.map((s) => ({ ...s, status: "PENDING" }))
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const [placeholderIndex, setPlaceholderIndex] = useState(0)
+  const [placeholderIndex] = useState(
+    () => Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length)
+  )
 
-  // Pick random placeholder on client to avoid SSR hydration mismatch
+  // Reset steps when language changes (only when idle)
   useEffect(() => {
-    setPlaceholderIndex(Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length))
-  }, [])
-
-  // Abort coordinator on unmount to prevent setState on unmounted component
-  useEffect(() => {
-    return () => {
-      coordinator.abort()
+    if (phase === "idle") {
+      const templates = language === "zh" ? WORKFLOW_STEPS_ZH : WORKFLOW_STEPS
+      setSteps(templates.map((s) => ({ ...s, status: "PENDING" })))
     }
-  }, [])
+  }, [language, phase])
 
   const handleGenerate = useCallback(() => {
     if (phase !== "idle") return
@@ -48,11 +54,18 @@ export function Workspace({
     setErrorMessage(null)
     onPhaseChange("generating")
 
-    const ideaText = idea.trim() || projectName.trim() || "Untitled Project"
+    const ideaText = idea.trim() || projectName.trim() || (language === "zh" ? "未命名项目" : "Untitled Project")
 
     const callbacks: CoordinatorCallbacks = {
       onStepStart: (_step, allSteps) => {
-        setSteps(allSteps)
+        const bilingual = allSteps.map((s) => {
+          const zh = WORKFLOW_STEPS_ZH.find((z) => z.id === s.id)
+          return language === "zh" && zh ? { ...s, name: zh.name, runningText: zh.runningText } : s
+        })
+        setSteps(bilingual)
+      },
+      onStreamChunk: (stepId, delta) => {
+        onStreamChunk(stepId, delta)
       },
       onStepComplete: (_step, _section, allSections, allSteps) => {
         onStreamUpdate(allSections)
@@ -70,8 +83,12 @@ export function Workspace({
       },
     }
 
-    coordinator.execute(ideaText, callbacks)
-  }, [phase, idea, projectName, onPhaseChange, onStreamUpdate])
+    coordinator.execute(ideaText, language, callbacks)
+  }, [phase, idea, projectName, language, onPhaseChange, onStreamUpdate, onStreamChunk])
+
+  const toggleLanguage = () => {
+    onLanguageChange(language === "en" ? "zh" : "en")
+  }
 
   const buttonContent = () => {
     switch (phase) {
@@ -79,21 +96,21 @@ export function Workspace({
         return (
           <>
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Generating...
+            {language === "zh" ? "生成中..." : "Generating..."}
           </>
         )
       case "completed":
         return (
           <>
             <Check className="h-3.5 w-3.5" />
-            Completed
+            {language === "zh" ? "已完成" : "Completed"}
           </>
         )
       default:
         return (
           <>
             <Sparkles className="h-3.5 w-3.5" />
-            Generate
+            {language === "zh" ? "开始生成" : "Generate"}
           </>
         )
     }
@@ -101,16 +118,23 @@ export function Workspace({
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
-      <div className="px-5 py-5 border-b border-neutral-100">
-        <h2 className="text-sm font-semibold text-neutral-900">Workspace</h2>
+      <div className="flex items-center justify-between px-5 py-5 border-b border-neutral-100">
+        <h2 className="text-sm font-semibold text-neutral-900">
+          {language === "zh" ? "工作区" : "Workspace"}
+        </h2>
+        <button
+          onClick={toggleLanguage}
+          className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 transition-colors"
+        >
+          <Languages className="h-3 w-3" />
+          {language === "en" ? "中文" : "EN"}
+        </button>
       </div>
 
-      {/* Inputs */}
       <div className="px-5 py-4 space-y-3 border-b border-neutral-100">
         <div>
           <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">
-            Project Name
+            {language === "zh" ? "项目名称" : "Project Name"}
           </label>
           <Input
             value={projectName}
@@ -122,7 +146,7 @@ export function Workspace({
         </div>
         <div>
           <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">
-            Idea
+            {language === "zh" ? "产品想法" : "Idea"}
           </label>
           <Input
             value={idea}
@@ -151,16 +175,14 @@ export function Workspace({
         </Button>
       </div>
 
-      {/* Workflow */}
       <div className="flex-1 overflow-y-auto">
-        <WorkflowPanel steps={steps} />
+        <WorkflowPanel steps={steps} language={language} />
       </div>
 
-      {/* Recent Ideas */}
       {phase === "idle" && (
         <div className="px-5 py-3 border-t border-neutral-100">
           <h3 className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider mb-2">
-            Recent Ideas
+            {language === "zh" ? "最近想法" : "Recent Ideas"}
           </h3>
           <div className="space-y-0.5">
             {RECENT_IDEAS.map((item) => (
@@ -169,12 +191,8 @@ export function Workspace({
                 className="flex w-full items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-neutral-50 transition-colors"
               >
                 <Clock className="h-3 w-3 text-neutral-300 flex-shrink-0" />
-                <span className="text-xs text-neutral-600 truncate">
-                  {item.name}
-                </span>
-                <span className="text-[10px] text-neutral-300 ml-auto flex-shrink-0">
-                  {item.date}
-                </span>
+                <span className="text-xs text-neutral-600 truncate">{item.name}</span>
+                <span className="text-[10px] text-neutral-300 ml-auto flex-shrink-0">{item.date}</span>
               </button>
             ))}
           </div>

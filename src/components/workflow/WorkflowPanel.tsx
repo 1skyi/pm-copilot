@@ -1,12 +1,13 @@
 ﻿"use client"
 
 import { useEffect, useRef } from "react"
-import { WorkflowStep, WorkflowStepStatus } from "@/types"
+import { WorkflowStep, WorkflowStepStatus, Language } from "@/types"
 import { cn } from "@/lib/utils"
 import { Check, Loader2, Circle, XCircle } from "lucide-react"
 
 interface WorkflowPanelProps {
   steps: WorkflowStep[]
+  language?: Language
 }
 
 const statusConfig: Record<
@@ -19,7 +20,14 @@ const statusConfig: Record<
   ERROR: { icon: XCircle, className: "text-red-500" },
 }
 
-export function WorkflowPanel({ steps }: WorkflowPanelProps) {
+const STATUS_LABELS: Record<WorkflowStepStatus, Record<Language, string>> = {
+  PENDING: { en: "Pending", zh: "等待中" },
+  RUNNING: { en: "Running", zh: "生成中" },
+  COMPLETED: { en: "Completed", zh: "已完成" },
+  ERROR: { en: "Error", zh: "失败" },
+}
+
+export function WorkflowPanel({ steps, language = "en" }: WorkflowPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const runningIndex = steps.findIndex((s) => s.status === "RUNNING")
 
@@ -35,7 +43,7 @@ export function WorkflowPanel({ steps }: WorkflowPanelProps) {
   return (
     <div className="px-5 py-4">
       <h3 className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider mb-3">
-        Workflow
+        {language === "zh" ? "工作流" : "Workflow"}
       </h3>
       <div className="space-y-0" ref={containerRef}>
         {steps.map((step, index) => {
@@ -96,12 +104,12 @@ export function WorkflowPanel({ steps }: WorkflowPanelProps) {
                 )}
                 {isError && (
                   <p className="text-[10px] text-red-500 mt-0.5">
-                    Failed — check API key
+                    {language === "zh" ? "失败 — 请检查 API Key" : "Failed — check API key"}
                   </p>
                 )}
                 {!isRunning && !isError && (
                   <p className="text-[10px] text-neutral-400 mt-0.5">
-                    {isCompleted ? "Completed" : "Pending"}
+                    {STATUS_LABELS[step.status][language]}
                   </p>
                 )}
               </div>

@@ -1,28 +1,25 @@
-﻿import { StreamedSection } from "@/types"
+﻿import { StreamedSection, Language } from "@/types"
 import { getProvider, getConfig } from "@/lib/ai/providers"
 
-const SYSTEM_PROMPT = `You are a senior product manager at a top tech company. Your task is to clarify a product idea.
+const PROMPTS: Record<Language, string> = {
+  en: `You are a senior product manager. Clarify the given product idea by asking and answering 3-5 key questions: core problem, target users, primary use cases, success metrics, constraints. Output in Markdown. Start with a brief overview. 200-400 words. Do NOT include a title heading.`,
 
-Given a product idea, ask and answer 3-5 key clarifying questions:
-- What is the core problem being solved?
-- Who are the target users?
-- What are the primary use cases?
-- What are the success metrics?
-- What are the key constraints or risks?
+  zh: `你是一位资深产品经理。请对给定的产品想法进行澄清分析，提出并回答3-5个关键问题：核心问题、目标用户、主要使用场景、成功指标、约束条件。使用Markdown格式输出。以简要概述开头。200-400字。不要包含标题。`,
+}
 
-Output format: Use Markdown. Start with a brief overview paragraph, then list the resolved questions as bullet points. Keep it concise (200-400 words). Do NOT include a title heading — that will be added separately.`
-
-export async function generateClarification(idea: string): Promise<StreamedSection> {
+export async function generateClarification(idea: string, language: Language = "en"): Promise<StreamedSection> {
   const provider = getProvider()
   const config = getConfig()
 
-  const userPrompt = `Product Idea: ${idea}\n\nPlease clarify this product idea by asking and answering key questions.`
+  const userPrompt = language === "zh"
+    ? `产品想法：${idea}\n\n请对这个产品想法进行澄清分析。`
+    : `Product Idea: ${idea}\n\nPlease clarify this product idea.`
 
-  const content = await provider.generate(SYSTEM_PROMPT, userPrompt, config)
+  const content = await provider.generate(PROMPTS[language], userPrompt, config)
 
   return {
     stepId: "clarification",
-    title: "## Clarification\n\n",
+    title: language === "zh" ? "## 需求澄清\n\n" : "## Clarification\n\n",
     content: content + "\n\n",
   }
 }

@@ -54,8 +54,9 @@ export function Workspace({
       onStepStart: (_step, allSteps) => {
         setSteps(allSteps)
       },
-      onStepComplete: (_step, _section, allSections) => {
+      onStepComplete: (_step, _section, allSections, allSteps) => {
         onStreamUpdate(allSections)
+        setSteps(allSteps)
       },
       onComplete: (allSections) => {
         onStreamUpdate(allSections)

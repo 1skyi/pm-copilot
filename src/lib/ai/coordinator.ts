@@ -6,7 +6,7 @@ import { ProviderError } from "./provider"
 
 export interface CoordinatorCallbacks {
   onStepStart: (step: WorkflowStep, steps: WorkflowStep[]) => void
-  onStepComplete: (step: WorkflowStep, section: StreamedSection, allSections: StreamedSection[]) => void
+  onStepComplete: (step: WorkflowStep, section: StreamedSection, allSections: StreamedSection[], allSteps: WorkflowStep[]) => void
   onComplete: (allSections: StreamedSection[]) => void
   onError: (stepId: WorkflowStepId, error: Error) => void
 }
@@ -45,7 +45,7 @@ export class Coordinator {
 
         this.builder.append(section)
         this.workflow.completeCurrentStep()
-        callbacks.onStepComplete(step, section, this.builder.getSections())
+        callbacks.onStepComplete(step, section, this.builder.getSections(), this.workflow.getSteps())
       } catch (error) {
         this.workflow.markError(stepId)
         callbacks.onError(

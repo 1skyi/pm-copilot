@@ -75,6 +75,15 @@ export function MarkdownViewer({
 }: MarkdownViewerProps) {
   const [copied, setCopied] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const userScrolledUpRef = useRef(false)
+
+  // Track whether user has manually scrolled up
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40
+    userScrolledUpRef.current = !atBottom
+  }, [])
 
   const completedContent = sections.map((s) => (SECTION_TITLES[s.stepId as WorkflowStepId]?.[language] ?? s.title) + s.content).join("")
   let streamingBlock = ""
@@ -84,9 +93,21 @@ export function MarkdownViewer({
   }
   const fullContent = completedContent + streamingBlock
 
+  // Auto-scroll only when user hasn't scrolled up — respects user intent
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" })
+    const el = scrollRef.current
+    if (!el) return
+    if (!userScrolledUpRef.current) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+    }
   }, [fullContent])
+
+  // Reset scroll lock when a new workflow starts (phase changes to generating)
+  useEffect(() => {
+    if (phase === "generating") {
+      userScrolledUpRef.current = false
+    }
+  }, [phase])
 
   const getFullText = useCallback(() => sections.map((s) => (SECTION_TITLES[s.stepId as WorkflowStepId]?.[language] ?? s.title) + s.content).join(""), [sections, language])
 
@@ -123,7 +144,7 @@ export function MarkdownViewer({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto" ref={scrollRef}>
+      <div className="flex-1 overflow-y-auto" ref={scrollRef} onScroll={handleScroll}>
         <div className="px-6 py-5">
           <article className="prose prose-neutral max-w-none prose-headings:font-semibold prose-headings:text-neutral-900 prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:text-neutral-600 prose-p:leading-relaxed prose-p:text-base prose-a:text-neutral-800 prose-a:underline prose-a:underline-offset-2 prose-strong:text-neutral-800 prose-strong:font-semibold prose-code:text-neutral-700 prose-code:bg-neutral-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-neutral-900 prose-pre:text-neutral-100 prose-pre:text-xs prose-table:text-sm prose-th:font-medium prose-th:text-neutral-700 prose-td:text-neutral-600 prose-blockquote:text-neutral-500 prose-blockquote:border-neutral-200 prose-li:text-neutral-600 prose-li:text-base prose-hr:border-neutral-100">
             <ReactMarkdown remarkPlugins={[remarkGfm]}>{fullContent}</ReactMarkdown>

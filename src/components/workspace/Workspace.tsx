@@ -106,6 +106,7 @@ export function Workspace({
 
     onPhaseChange("generating")
     setErrorMessage(null)
+    onStreamUpdate([]) // Clear old spec so user sees fresh streaming
 
     try {
       const improvedIdea = await coordinator.generateImprovedIdea(

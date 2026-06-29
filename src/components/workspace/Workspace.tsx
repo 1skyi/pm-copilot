@@ -44,6 +44,8 @@ export function Workspace({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const ideaRef = useRef("")
   const reviewRef = useRef<ReviewJson | null>(null)
+  const phaseRef = useRef(phase)
+  phaseRef.current = phase // Always current — avoids stale closure in setTimeout
 
   // Keep reviewRef in sync for use inside callbacks
   useEffect(() => { reviewRef.current = review }, [review])
@@ -62,7 +64,7 @@ export function Workspace({
   }, [language, phase])
 
   const runWorkflow = useCallback((ideaText: string) => {
-    if (phase !== "generating" && phase !== "idle") return
+    if (phaseRef.current !== "generating" && phaseRef.current !== "idle") return
     onPhaseChange("generating")
     ideaRef.current = ideaText
 
@@ -95,7 +97,7 @@ export function Workspace({
     }
 
     coordinator.execute(ideaText, language, callbacks)
-  }, [phase, language, onPhaseChange, onStreamUpdate, onStreamChunk, onReviewReady, onCoachReady, onConvergence])
+  }, [language, onPhaseChange, onStreamUpdate, onStreamChunk, onReviewReady, onCoachReady, onConvergence])
 
   const handleGenerate = useCallback(() => {
     if (phase !== "idle") return
@@ -135,7 +137,7 @@ export function Workspace({
       onPhaseChange("idle")
       // Brief tick to let React process the state reset, then start
       setTimeout(() => {
-        if (phase !== "generating") {
+        if (phaseRef.current !== "generating") {
           onPhaseChange("generating")
           runWorkflow(improvedIdea)
         }

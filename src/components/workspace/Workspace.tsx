@@ -9,24 +9,31 @@ import { coordinator, CoordinatorCallbacks } from "@/lib/ai/coordinator"
 import { ProviderError } from "@/lib/ai/provider"
 import { WorkflowStepId } from "@/lib/ai/workflow-engine"
 import { WORKFLOW_STEPS, WORKFLOW_STEPS_ZH, RECENT_IDEAS, SAMPLE_PLACEHOLDERS } from "@/constants"
-import { WorkflowStep, GeneratePhase, StreamedSection, Language, CoachOutput } from "@/types"
+import { WorkflowStep, GeneratePhase, StreamedSection, Language, ReviewJson, CoachOutput, ConvergenceResult, IterationRecord } from "@/types"
 
 interface WorkspaceProps {
   onStreamUpdate: (sections: StreamedSection[]) => void
   onStreamChunk: (stepId: WorkflowStepId, delta: string) => void
   onPhaseChange: (phase: GeneratePhase) => void
+  onReviewReady: (review: ReviewJson) => void
   onCoachReady: (coach: CoachOutput) => void
+  onConvergence: (result: ConvergenceResult) => void
   onSetOptimizeCallback: (cb: (() => void) | null) => void
+  onReset: () => void
   phase: GeneratePhase
   language: Language
   onLanguageChange: (lang: Language) => void
-  canOptimize: boolean
+  review: ReviewJson | null
+  convergence: ConvergenceResult | null
+  iterationRecords: IterationRecord[]
+  maxIterations: number
 }
 
 export function Workspace({
   onStreamUpdate, onStreamChunk, onPhaseChange,
-  onCoachReady, onSetOptimizeCallback,
-  phase, language, onLanguageChange, canOptimize,
+  onReviewReady, onCoachReady, onConvergence,
+  onSetOptimizeCallback, onReset,
+  phase, language, onLanguageChange, review, convergence, iterationRecords, maxIterations,
 }: WorkspaceProps) {
   const [projectName, setProjectName] = useState("")
   const [idea, setIdea] = useState("")
@@ -35,13 +42,14 @@ export function Workspace({
     stepTemplates.map((s) => ({ ...s, status: "PENDING" }))
   )
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const originalIdeaRef = useRef("")
-  const lastCoachRef = useRef<CoachOutput | null>(null)
-  const issueHistoryRef = useRef<string[]>([])
+  const ideaRef = useRef("")
+  const reviewRef = useRef<ReviewJson | null>(null)
+
+  // Keep reviewRef in sync for use inside callbacks
+  useEffect(() => { reviewRef.current = review }, [review])
 
   const [placeholderIndex, setPlaceholderIndex] = useState(0)
-
-  // Pick random placeholder on client to avoid SSR hydration mismatch
+  // Pick random placeholder on client only (avoid SSR hydration mismatch)
   useEffect(() => {
     setPlaceholderIndex(Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length))
   }, [])
@@ -54,10 +62,9 @@ export function Workspace({
   }, [language, phase])
 
   const runWorkflow = useCallback((ideaText: string) => {
-    if (phase !== "idle") return
-    setErrorMessage(null)
+    if (phase !== "generating" && phase !== "idle") return
     onPhaseChange("generating")
-    originalIdeaRef.current = ideaText
+    ideaRef.current = ideaText
 
     const callbacks: CoordinatorCallbacks = {
       onStepStart: (_step, allSteps) => {
@@ -76,12 +83,9 @@ export function Workspace({
         onStreamUpdate(allSections)
         onPhaseChange("completed")
       },
-      onCoachReady: (coach) => {
-        lastCoachRef.current = coach
-        // Accumulate issue titles for convergence
-        coach.topIssues.forEach((i) => issueHistoryRef.current.push(`[${i.priority}] ${i.title}`))
-        onCoachReady(coach)
-      },
+      onReviewReady,
+      onCoachReady,
+      onConvergence,
       onError: (_stepId, error) => {
         if (error instanceof ProviderError && error.code === "missing_key") {
           setErrorMessage(error.message)
@@ -91,56 +95,62 @@ export function Workspace({
     }
 
     coordinator.execute(ideaText, language, callbacks)
-  }, [phase, language, onPhaseChange, onStreamUpdate, onStreamChunk, onCoachReady])
+  }, [phase, language, onPhaseChange, onStreamUpdate, onStreamChunk, onReviewReady, onCoachReady, onConvergence])
 
   const handleGenerate = useCallback(() => {
+    if (phase !== "idle") return
+    setErrorMessage(null)
     const ideaText = idea.trim() || projectName.trim() || (language === "zh" ? "未命名项目" : "Untitled Project")
     runWorkflow(ideaText)
-  }, [idea, projectName, runWorkflow, language])
-
-  // Optimize: generate improved idea then re-run
-  const handleOptimize = useCallback(async () => {
-    if (!canOptimize || !lastCoachRef.current) return
-    const originalIdea = originalIdeaRef.current || idea.trim() || projectName.trim()
-    if (!originalIdea) return
-
-    onPhaseChange("generating")
-    setErrorMessage(null)
-    onStreamUpdate([]) // Clear old spec so user sees fresh streaming
-
-    try {
-      const improvedIdea = await coordinator.generateImprovedIdea(
-        originalIdea, lastCoachRef.current, language, issueHistoryRef.current
-      )
-      setIdea(improvedIdea)
-      // Reset phase so runWorkflow can proceed
-      onPhaseChange("idle")
-      // Brief timeout to let React re-render then start
-      setTimeout(() => runWorkflow(improvedIdea), 100)
-    } catch {
-      setErrorMessage(language === "zh" ? "优化失败，请重试" : "Optimization failed, please retry")
-      onPhaseChange("idle")
-    }
-  }, [canOptimize, idea, projectName, language, onPhaseChange, runWorkflow])
-
-  // Register optimize callback for parent
-  useEffect(() => {
-    onSetOptimizeCallback(() => handleOptimize)
-    return () => onSetOptimizeCallback(null)
-  }, [handleOptimize, onSetOptimizeCallback])
+  }, [phase, idea, projectName, runWorkflow, language])
 
   const toggleLanguage = () => onLanguageChange(language === "en" ? "zh" : "en")
 
   const buttonContent = () => {
     switch (phase) {
-      case "generating":
-        return <><Loader2 className="h-3.5 w-3.5 animate-spin" />{language === "zh" ? "生成中..." : "Generating..."}</>
-      case "completed":
-        return <><Check className="h-3.5 w-3.5" />{language === "zh" ? "已完成" : "Completed"}</>
-      default:
-        return <><Sparkles className="h-3.5 w-3.5" />{language === "zh" ? "开始生成" : "Generate"}</>
+      case "generating": return <><Loader2 className="h-3.5 w-3.5 animate-spin" />{language === "zh" ? "生成中..." : "Generating..."}</>
+      case "completed": return <><Check className="h-3.5 w-3.5" />{language === "zh" ? "已完成" : "Completed"}</>
+      default: return <><Sparkles className="h-3.5 w-3.5" />{language === "zh" ? "开始生成" : "Generate"}</>
     }
   }
+
+  const canOptimize = convergence?.status === "iterating" && iterationRecords.length < maxIterations
+  const isStalled = convergence?.status === "stalled"
+
+  // Internal optimize: call coordinator.optimize(), set improved idea, re-run workflow
+  const handleOptimize = useCallback(async () => {
+    if (!canOptimize || !reviewRef.current) return
+    const originalIdea = ideaRef.current || idea.trim() || projectName.trim()
+    if (!originalIdea) return
+
+    setErrorMessage(null)
+    onStreamUpdate([]) // Clear old spec
+    onPhaseChange("generating")
+
+    try {
+      const improvedIdea = await coordinator.optimize(originalIdea, reviewRef.current, language)
+      setIdea(improvedIdea)
+      ideaRef.current = improvedIdea
+      // Phase is "generating" — reset to idle so runWorkflow guard passes
+      onPhaseChange("idle")
+      // Brief tick to let React process the state reset, then start
+      setTimeout(() => {
+        if (phase !== "generating") {
+          onPhaseChange("generating")
+          runWorkflow(improvedIdea)
+        }
+      }, 100)
+    } catch {
+      setErrorMessage(language === "zh" ? "优化失败，请重试" : "Optimization failed, please retry")
+      onPhaseChange("idle")
+    }
+  }, [canOptimize, idea, projectName, language, onPhaseChange, onStreamUpdate, runWorkflow, phase])
+
+  // Register optimize callback for parent → CoachPanel
+  useEffect(() => {
+    onSetOptimizeCallback(() => handleOptimize)
+    return () => onSetOptimizeCallback(null)
+  }, [handleOptimize, onSetOptimizeCallback])
 
   return (
     <div className="flex h-full flex-col">
@@ -178,18 +188,36 @@ export function Workspace({
           </div>
         )}
 
+        {/* Convergence stalled warning */}
+        {isStalled && (
+          <div className="flex items-start gap-2 p-2.5 rounded-md bg-amber-50 border border-amber-100">
+            <XCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div className="text-xs text-amber-700">
+              <p className="font-medium mb-0.5">{language === "zh" ? "迭代停滞" : "Iteration Stalled"}</p>
+              <p className="text-amber-600">{convergence.reason}</p>
+            </div>
+          </div>
+        )}
+
         <Button onClick={handleGenerate} className="w-full h-8 text-sm gap-1.5 transition-all"
           size="sm" disabled={phase !== "idle"}
           variant={phase === "completed" ? "outline" : "default"}>
           {buttonContent()}
         </Button>
+
+        {/* Reset button when converged or stalled */}
+        {(convergence?.status === "converged" || convergence?.status === "stalled" || convergence?.status === "limit_reached") && (
+          <Button onClick={onReset} className="w-full h-8 text-sm gap-1.5" size="sm" variant="ghost">
+            {language === "zh" ? "重新开始" : "Start Fresh"}
+          </Button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto">
         <WorkflowPanel steps={steps} language={language} />
       </div>
 
-      {phase === "idle" && (
+      {phase === "idle" && !review && (
         <div className="px-5 py-3 border-t border-neutral-100">
           <h3 className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider mb-2">
             {language === "zh" ? "最近想法" : "Recent Ideas"}

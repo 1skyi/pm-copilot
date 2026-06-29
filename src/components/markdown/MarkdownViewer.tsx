@@ -3,9 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { cn } from "@/lib/utils"
 import { Sparkles, Copy, Download, Check, FileText, Layers, Database, CheckCircle, Loader2 } from "lucide-react"
-import { GeneratePhase, StreamedSection, Language, CoachOutput, IterationRecord } from "@/types"
+import { GeneratePhase, StreamedSection, Language, ReviewJson, CoachOutput, ConvergenceResult, IterationRecord } from "@/types"
 import { WorkflowStepId } from "@/lib/ai/workflow-engine"
 import { EMPTY_STATE_FEATURES } from "@/constants"
 import { CoachPanel } from "@/components/coach/CoachPanel"
@@ -16,11 +15,11 @@ interface MarkdownViewerProps {
   streamingContent: Record<string, string>
   activeStreamingStep: WorkflowStepId | null
   language: Language
+  review: ReviewJson | null
   coach: CoachOutput | null
-  iteration: number
-  iterationHistory: IterationRecord[]
+  convergence: ConvergenceResult | null
+  iterationRecords: IterationRecord[]
   maxIterations: number
-  canOptimize: boolean
   onOptimize: () => void
 }
 
@@ -69,15 +68,32 @@ function EmptyState({ language }: { language: Language }) {
   )
 }
 
+/** Format review JSON as readable markdown for display */
+function formatReviewMd(review: ReviewJson, language: Language): string {
+  const scoreLabel = language === "zh" ? "评分" : "Score"
+  const maturityLabel = language === "zh" ? "成熟度" : "Maturity"
+  const issuesLabel = language === "zh" ? "问题" : "Issues"
+
+  let md = `**${scoreLabel}:** ${review.score}  |  **${maturityLabel}:** ${review.maturity}\n\n`
+  md += `### ${issuesLabel}\n\n`
+
+  for (const issue of review.issues) {
+    md += `- **[${issue.priority}] ${issue.field}** — ${issue.problem}\n`
+    md += `  - ${language === "zh" ? "原因" : "Reason"}: ${issue.reason}\n`
+    md += `  - ${language === "zh" ? "建议" : "Recommendation"}: ${issue.recommendation}\n\n`
+  }
+  return md
+}
+
 export function MarkdownViewer({
   sections, phase, streamingContent, activeStreamingStep, language,
-  coach, iteration, iterationHistory, maxIterations, canOptimize, onOptimize,
+  review, coach, convergence, iterationRecords, maxIterations, onOptimize,
 }: MarkdownViewerProps) {
   const [copied, setCopied] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const userScrolledUpRef = useRef(false)
 
-  // Track whether user has manually scrolled up
+  // Track whether user has manually scrolled up — if so, pause auto-scroll
   const handleScroll = useCallback(() => {
     const el = scrollRef.current
     if (!el) return
@@ -85,7 +101,15 @@ export function MarkdownViewer({
     userScrolledUpRef.current = !atBottom
   }, [])
 
-  const completedContent = sections.map((s) => (SECTION_TITLES[s.stepId as WorkflowStepId]?.[language] ?? s.title) + s.content).join("")
+  // Replace raw review JSON section with formatted version
+  const displaySections = sections.map((s) => {
+    if (s.stepId === "ai-review" && review) {
+      return { ...s, content: formatReviewMd(review, language) + "\n\n" }
+    }
+    return s
+  })
+
+  const completedContent = displaySections.map((s) => (SECTION_TITLES[s.stepId as WorkflowStepId]?.[language] ?? s.title) + s.content).join("")
   let streamingBlock = ""
   if (activeStreamingStep && streamingContent[activeStreamingStep]) {
     const title = SECTION_TITLES[activeStreamingStep]?.[language] ?? `## ${activeStreamingStep}\n\n`
@@ -102,7 +126,7 @@ export function MarkdownViewer({
     }
   }, [fullContent])
 
-  // Reset scroll lock when a new workflow starts (phase changes to generating)
+  // Reset scroll lock when a new workflow starts
   useEffect(() => {
     if (phase === "generating") {
       userScrolledUpRef.current = false
@@ -123,7 +147,9 @@ export function MarkdownViewer({
   }, [getFullText])
 
   const t = UI[language]
-  if (phase === "idle") return <EmptyState language={language} />
+  const canOptimize = convergence?.status === "iterating" && iterationRecords.length < maxIterations
+
+  if (phase === "idle" && !review) return <EmptyState language={language} />
 
   return (
     <div className="h-full flex flex-col">
@@ -153,13 +179,13 @@ export function MarkdownViewer({
           {phase === "generating" && !fullContent && <div className="flex items-center gap-2 text-neutral-400 text-sm"><Loader2 className="h-4 w-4 animate-spin" /><span>{t.thinking}</span></div>}
         </div>
 
-        {/* Coach Panel — appears after completion */}
+        {/* Coach Panel */}
         {coach && (
           <CoachPanel
             coach={coach}
-            iteration={iteration}
+            convergence={convergence}
+            iterationRecords={iterationRecords}
             maxIterations={maxIterations}
-            history={iterationHistory}
             language={language}
             onOptimize={onOptimize}
             canOptimize={canOptimize}

@@ -167,7 +167,7 @@ export function MarkdownViewer({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100 dark:border-neutral-800">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-100">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold text-neutral-900">{t.title}</h2>
           {phase === "generating" && <span className="flex items-center gap-1 text-[10px] text-blue-500"><span className="inline-block h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />{t.generating}</span>}

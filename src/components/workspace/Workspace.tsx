@@ -128,7 +128,7 @@ export function Workspace({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-5 py-5 border-b border-neutral-100">
-        <h2 className="text-sm font-semibold text-black dark:text-white">{language === "zh" ? "工作区" : "Workspace"}</h2>
+        <h2 className="text-sm font-semibold text-black">{language === "zh" ? "工作区" : "Workspace"}</h2>
         <button onClick={toggleLanguage} className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 transition-colors">
           <Languages className="h-3 w-3" />{language === "en" ? "中文" : "EN"}
         </button>
@@ -136,11 +136,11 @@ export function Workspace({
 
       <div className="px-5 py-4 space-y-3 border-b border-neutral-100">
         <div>
-          <label className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">{language === "zh" ? "项目名称" : "Project Name"}</label>
+          <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">{language === "zh" ? "项目名称" : "Project Name"}</label>
           <Input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="e.g. Campus Sports Management" className="mt-1 h-8 text-sm" disabled={phase === "generating"} />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">{language === "zh" ? "产品想法" : "Idea"}</label>
+          <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">{language === "zh" ? "产品想法" : "Idea"}</label>
           <Input value={idea} onChange={(e) => setIdea(e.target.value)} placeholder={SAMPLE_PLACEHOLDERS[placeholderIndex]} className="mt-1 h-8 text-sm" disabled={phase === "generating"} />
         </div>
 

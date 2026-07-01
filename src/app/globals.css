@@ -1,23 +1,9 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
 
-@variant dark (&:where(.dark, .dark *));
-
 :root {
   --background: #fcfcfc;
   --foreground: #0a0a0a;
-}
-
-.dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root:not(.light) {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
@@ -32,5 +18,3 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #e5e5e5; border-radius: 2px; }
 ::-webkit-scrollbar-thumb:hover { background: #d4d4d4; }
-.dark ::-webkit-scrollbar-thumb { background: #404040; }
-.dark ::-webkit-scrollbar-thumb:hover { background: #525252; }

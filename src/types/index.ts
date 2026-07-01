@@ -92,6 +92,46 @@ export interface ConvergenceResult {
 
 // ─── Sprint 5 Final: Version-Driven Architecture ───
 
+/** A single field-level change derived from Review feedback. */
+export interface FieldDelta {
+  field: string            // e.g. "Target User", "MVP Scope"
+  action: "refined" | "narrowed" | "clarified" | "removed"
+  reason: string           // Which P0 issue this addresses
+  summary: string          // 1-sentence: what changed
+}
+
+/** Tracking status for issues across versions. */
+export type IssueStatus = "resolved" | "persisting" | "regressed" | "new"
+
+export interface TrackedIssue extends ReviewIssue {
+  status: IssueStatus
+  firstSeenInVersion: number
+  lastSeenInVersion: number
+}
+
+/** Version Transition: what changed from v(n) to v(n+1). */
+export interface VersionDelta {
+  sourceVersion: number
+  targetVersion: number
+  appliedDeltas: FieldDelta[]
+  unresolvedP0Ids: string[]  // e.g. "Target User:User segments too broad"
+  resolvedP0Ids: string[]
+  newP0Ids: string[]
+  scoreDelta: number         // v(n+1).score - v(n).score
+  p0Delta: number            // v(n+1).p0Count - v(n).p0Count (negative = improvement)
+}
+
+/** Debug state exposed for internal logging / transparency. */
+export interface DebugState {
+  currentVersion: number
+  totalVersions: number
+  appliedDeltaCount: number
+  unresolvedP0s: string[]
+  reasonForScoreChange: string
+  shouldStop: boolean
+  stopReason: string
+}
+
 /** Immutable snapshot of one complete AI generation run. Never mutated after creation. */
 export interface VersionV1 {
   versionNumber: number
@@ -105,6 +145,8 @@ export interface VersionV1 {
   p1Count: number
   timestamp: string              // ISO 8601
   parentVersionNumber: number | null
+  delta?: VersionDelta           // Transition from parent (null for v1)
+  trackedIssues?: TrackedIssue[] // Stateful issue tracking (null for v1)
 }
 
 /** Quality gate verdict after comparing a new version against the current best. */

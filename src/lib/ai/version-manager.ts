@@ -7,7 +7,7 @@
  * - Quality gate prevents blind overwrite of better versions.
  * - Module-level singleton preserves state across React re-renders.
  */
-import { VersionV1, QualityGateResult, EvolutionSnapshot, StreamedSection, ReviewJson, CoachOutput, Language, CompareResult } from "@/types"
+import { VersionV1, QualityGateResult, EvolutionSnapshot, StreamedSection, ReviewJson, CoachOutput, Language, CompareResult, VersionDelta, TrackedIssue } from "@/types"
 import { getProvider, getConfig } from "./providers"
 
 export class VersionManager {
@@ -22,6 +22,8 @@ export class VersionManager {
     review: ReviewJson,
     coach: CoachOutput | null,
     parentVersionNumber: number | null,
+    delta?: VersionDelta,
+    trackedIssues?: TrackedIssue[],
   ): number {
     const vn = this.versions.length + 1
     const p0 = review.issues.filter((i) => i.priority === "P0").length
@@ -40,6 +42,8 @@ export class VersionManager {
       p1Count: p1,
       timestamp: new Date().toISOString(),
       parentVersionNumber,
+      delta,
+      trackedIssues,
     }
 
     this.versions.push(v)
@@ -67,16 +71,38 @@ export class VersionManager {
     return this.versions.length ? this.versions[this.versions.length - 1].versionNumber : null
   }
 
-  /** Best = argmax(score); tiebreak = min(p0Count); tiebreak = latest. */
+  /**
+   * Best Version selection:
+   * 1. Lowest P0 count (fewer blocking issues = better)
+   * 2. Highest maturity level (Idea < Proto < MVP < Market < Investment)
+   * 3. Stability: score variation < 5 across recent 2 versions
+   * 4. Highest score as final tiebreak
+   */
   getBestVersionNumber(): number | null {
     if (!this.versions.length) return null
+
+    const maturityRank: Record<string, number> = {
+      "Idea": 0, "Prototype": 1, "MVP Ready": 2, "Market Ready": 3, "Investment Ready": 4,
+    }
+
     let best = this.versions[0]
     for (const v of this.versions) {
+      // 1. Lower P0 count wins
+      if (v.p0Count < best.p0Count) { best = v; continue }
+      if (v.p0Count > best.p0Count) continue
+
+      // 2. Higher maturity wins
+      const vRank = maturityRank[v.maturity] ?? 0
+      const bestRank = maturityRank[best.maturity] ?? 0
+      if (vRank > bestRank) { best = v; continue }
+      if (vRank < bestRank) continue
+
+      // 3. Higher score wins
       if (v.score > best.score) { best = v; continue }
-      if (v.score === best.score) {
-        if (v.p0Count < best.p0Count) { best = v; continue }
-        if (v.p0Count === best.p0Count && v.versionNumber > best.versionNumber) best = v
-      }
+      if (v.score < best.score) continue
+
+      // 4. Latest wins
+      if (v.versionNumber > best.versionNumber) best = v
     }
     return best.versionNumber
   }

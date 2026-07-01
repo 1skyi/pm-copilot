@@ -1,4 +1,4 @@
-import { WorkflowStep, StreamedSection, Language, ReviewJson, CoachOutput, CoachIssueAnalysis, IterationContext, IterationRecord, ConvergenceResult, ConvergenceStatus } from "@/types"
+import { WorkflowStep, StreamedSection, Language, ReviewJson, CoachOutput, CoachIssueAnalysis, IterationContext, IterationRecord, ConvergenceResult, ConvergenceStatus, FieldDelta, TrackedIssue, VersionDelta, IssueStatus } from "@/types"
 import { WorkflowEngine, WorkflowStepId } from "./workflow-engine"
 import { MarkdownBuilder } from "./markdown-builder"
 import { ProviderError } from "./provider"
@@ -45,9 +45,9 @@ export class Coordinator {
   private workflow = new WorkflowEngine()
   private builder = new MarkdownBuilder()
   private aborted = false
-  private consecutiveLowGain = 0
+  private consecutiveP0NoDecrease = 0
 
-  /** Execute full 9-step workflow. Creates a Version on completion. */
+  /** Execute full 9-step workflow. Creates a Version on completion with delta tracking. */
   async execute(idea: string, language: Language, callbacks: CoordinatorCallbacks): Promise<number | null> {
     this.workflow.reset()
     this.builder.reset()
@@ -57,7 +57,9 @@ export class Coordinator {
     const config = getConfig()
     const stepIds = [...this.workflow.getStepIds()]
     const parentNumber = versionManager.latestNumber
+    const prevVersion = parentNumber ? versionManager.get(parentNumber) : undefined
 
+    // ─── Run 9-step workflow ───
     for (const stepId of stepIds) {
       if (this.aborted) break
       const step = this.workflow.startCurrentStep()
@@ -90,32 +92,169 @@ export class Coordinator {
     if (this.aborted) return null
     callbacks.onComplete(this.builder.getSections())
 
-    // Parse review
+    // ─── Parse review ───
     const review = this._parseReview()
     if (!review) { callbacks.onError("ai-review" as WorkflowStepId, new Error("Failed to parse review JSON")); return null }
     callbacks.onReviewReady(review)
 
-    // Coach
+    // ─── Stateful issue tracking: compare to previous version ───
+    const trackedIssues: TrackedIssue[] = this._trackIssues(review, prevVersion)
+
+    // ─── Compute delta from parent ───
+    const delta = prevVersion ? this._computeDelta(prevVersion, review, trackedIssues) : undefined
+
+    // ─── Coach ───
     const coach = await this._generateCoach(review, language)
     callbacks.onCoachReady(coach)
 
-    // Create immutable version
-    const vn = versionManager.createVersion(idea, this.builder.getSections(), review, coach, parentNumber)
+    // ─── Create immutable version with delta + tracked issues ───
+    const vn = versionManager.createVersion(idea, this.builder.getSections(), review, coach, parentNumber, delta, trackedIssues)
 
-    // Convergence
+    // ─── Convergence: P0-based + 3-iteration stop ───
     callbacks.onConvergence(this._checkConvergence(review))
 
     return vn
   }
 
-  /** Optimize idea based on review → returns improved idea text. */
+  /** Stateful issue tracking: resolve / persist / regress / new. */
+  private _trackIssues(review: ReviewJson, prevVersion?: import("@/types").VersionV1): TrackedIssue[] {
+    const vn = versionManager.latestNumber ?? 1
+    const prevIssues = prevVersion?.review.issues ?? []
+
+    const issueKey = (i: { field: string; problem: string }) => `${i.field}:${i.problem}`
+
+    const prevMap = new Map<string, (typeof prevIssues)[number]>()
+    prevIssues.forEach((i) => prevMap.set(issueKey(i), i))
+
+    return review.issues.map((cur): TrackedIssue => {
+      const key = issueKey(cur)
+      const prev = prevMap.get(key)
+      let status: IssueStatus = "new"
+      if (prev) {
+        if (cur.priority === prev.priority) status = "persisting"
+        else if (cur.priority === "P1" && prev.priority === "P0") status = "regressed"
+        else if (cur.priority === "P2" && (prev.priority === "P0" || prev.priority === "P1")) status = "regressed"
+        else status = "resolved" // Priority downgraded OR issue fixed
+      }
+      return { ...cur, status, firstSeenInVersion: prev ? prevVersion!.versionNumber : vn, lastSeenInVersion: vn }
+    })
+  }
+
+  /** Compute VersionDelta: what changed from parent to this version. */
+  private _computeDelta(prevVersion: import("@/types").VersionV1, review: ReviewJson, tracked: TrackedIssue[]): VersionDelta {
+    const resolved = tracked.filter((t) => t.status === "resolved").map((t) => `${t.field}:${t.problem}`)
+    const persisting = tracked.filter((t) => t.status === "persisting").map((t) => `${t.field}:${t.problem}`)
+    const newP0s = tracked.filter((t) => t.status === "new" && t.priority === "P0").map((t) => `${t.field}:${t.problem}`)
+
+    const appliedDeltas: FieldDelta[] = resolved.map((id) => {
+      const parts = id.split(":")
+      return { field: parts[0] || id, action: "refined" as const, reason: id, summary: `Resolved: ${id}` }
+    })
+
+    return {
+      sourceVersion: prevVersion.versionNumber,
+      targetVersion: prevVersion.versionNumber + 1,
+      appliedDeltas,
+      unresolvedP0Ids: [...persisting, ...newP0s],
+      resolvedP0Ids: resolved,
+      newP0Ids: newP0s,
+      scoreDelta: review.score - prevVersion.score,
+      p0Delta: review.issues.filter((i) => i.priority === "P0").length - prevVersion.p0Count,
+    }
+  }
+
+  /** P0-based convergence + 3-iteration stop rule. */
+  private _checkConvergence(review: ReviewJson): ConvergenceResult {
+    const p0s = review.issues.filter((i) => i.priority === "P0")
+    const versions = versionManager.getAll()
+    const prev = versions.length > 1 ? versions[versions.length - 2] : undefined
+    const prevP0Ids = prev?.review.issues.filter((i) => i.priority === "P0")
+      .map((i) => `${i.field}:${i.problem}`) ?? []
+
+    if (p0s.length === 0) {
+      this.consecutiveP0NoDecrease = 0
+      return { status: "converged", reason: "All P0 issues resolved. Ready to build.", consecutiveLowGain: 0, previousP0Ids: [] }
+    }
+
+    // Track P0 decrease
+    if (prev) {
+      const p0Delta = p0s.length - prev.p0Count
+      if (p0Delta >= 0) {
+        this.consecutiveP0NoDecrease++
+      } else {
+        this.consecutiveP0NoDecrease = 0
+      }
+
+      // Stop after 3 iterations without P0 decrease
+      if (this.consecutiveP0NoDecrease >= 3) {
+        return {
+          status: "stalled",
+          reason: `P0 issues not decreasing for 3 iterations. Recommend redefining product direction, not continuing optimization.`,
+          consecutiveLowGain: this.consecutiveP0NoDecrease,
+          previousP0Ids: prevP0Ids,
+        }
+      }
+
+      // Score fluctuation ±3 without improvement
+      const scoreDelta = review.score - prev.score
+      if (Math.abs(scoreDelta) <= 3 && p0Delta >= 0) {
+        this.consecutiveP0NoDecrease++
+      }
+    }
+
+    // Check same P0s persisting
+    const curIds = p0s.map((i) => `${i.field}:${i.problem}`)
+    const same = curIds.filter((id) => prevP0Ids.includes(id))
+    if (same.length > 0 && same.length === p0s.length && prev) {
+      this.consecutiveP0NoDecrease++
+    }
+
+    return {
+      status: this.consecutiveP0NoDecrease >= 3 ? "stalled" : "iterating",
+      reason: this.consecutiveP0NoDecrease >= 3
+        ? "No P0 improvement for 3 iterations. Recommend redefining product direction."
+        : "",
+      consecutiveLowGain: this.consecutiveP0NoDecrease,
+      previousP0Ids: curIds,
+    }
+  }
+
+  /** Optimize: generate improved idea based on review deltas. */
   async optimize(originalIdea: string, review: ReviewJson, language: Language): Promise<string> {
     const sys = OPTIMIZER_PROMPT[language] ?? OPTIMIZER_PROMPT.en
+    const issuesSummary = review.issues
+      .filter((i) => i.priority === "P0" || i.priority === "P1")
+      .map((i) => `[${i.priority}] ${i.field}: ${i.problem} → ${i.recommendation}`)
+      .join("\n")
+
     const user = language === "zh"
-      ? `原始想法：${originalIdea}\n\n审查结果：${JSON.stringify(review)}`
-      : `Original Idea: ${originalIdea}\n\nReview: ${JSON.stringify(review)}`
+      ? `原始想法：${originalIdea}\n\n需修复的问题（仅修复这些，不新增功能）：\n${issuesSummary}`
+      : `Original Idea: ${originalIdea}\n\nIssues to fix (only fix these, do NOT add features):\n${issuesSummary}`
+
     const result = await getProvider().generate(sys, user, getConfig())
     return result.trim() || originalIdea
+  }
+
+  /** Debug state: exposes internal state for transparency. */
+  getDebugState(): import("@/types").DebugState {
+    const versions = versionManager.getAll()
+    const last = versions[versions.length - 1]
+    const deltas = versions.filter((v) => v.delta).length
+    const unresolved = last?.delta?.unresolvedP0Ids ?? []
+
+    return {
+      currentVersion: last?.versionNumber ?? 0,
+      totalVersions: versions.length,
+      appliedDeltaCount: deltas,
+      unresolvedP0s: unresolved,
+      reasonForScoreChange: last?.delta
+        ? `Score changed by ${last.delta.scoreDelta}, P0s changed by ${last.delta.p0Delta}`
+        : "Initial version",
+      shouldStop: this.consecutiveP0NoDecrease >= 3,
+      stopReason: this.consecutiveP0NoDecrease >= 3
+        ? "P0 issues not decreasing for 3 iterations"
+        : "",
+    }
   }
 
   // ─── Version-aware methods (delegated) ───
@@ -128,7 +267,7 @@ export class Coordinator {
     return versionManager.generateEvolutionInsight(language)
   }
 
-  // ─── Legacy compat (for components that still use these) ───
+  // ─── Legacy compat ───
 
   getIterationContexts(): IterationContext[] {
     return versionManager.getAll().map((v) => ({
@@ -158,12 +297,12 @@ export class Coordinator {
 
   resetIterations(): void {
     versionManager.reset()
-    this.consecutiveLowGain = 0
+    this.consecutiveP0NoDecrease = 0
   }
 
   abort(): void { this.aborted = true }
 
-  // ─── Private ───
+  // ─── Private helpers ───
 
   private _parseReview(): ReviewJson | null {
     const sec = this.builder.getSections().find((s) => s.stepId === "ai-review")
@@ -202,41 +341,6 @@ export class Coordinator {
         })),
       coachAdvice: language === "zh" ? `成熟度：${review.maturity}。优先解决 P0。` : `Maturity: ${review.maturity}. Prioritize P0.`,
     }
-  }
-
-  private _checkConvergence(review: ReviewJson): ConvergenceResult {
-    const p0s = review.issues.filter((i) => i.priority === "P0")
-    const versions = versionManager.getAll()
-    const prev = versions.length > 1 ? versions[versions.length - 2] : undefined
-    const prevP0Ids = prev?.review.issues.filter((i) => i.priority === "P0")
-      .map((i) => `${i.field}:${i.problem}`) ?? []
-
-    if (p0s.length === 0) {
-      return { status: "converged", reason: "All P0 issues resolved. Ready to build.", consecutiveLowGain: 0, previousP0Ids: [] }
-    }
-
-    if (prev) {
-      const delta = review.score - prev.score
-      this.consecutiveLowGain = delta < 3 ? this.consecutiveLowGain + 1 : 0
-      if (this.consecutiveLowGain >= 2) {
-        return { status: "stalled",
-          reason: `Score improvement < 3 for 2+ rounds. AI recommends redefining product direction.`,
-          consecutiveLowGain: this.consecutiveLowGain, previousP0Ids: prevP0Ids }
-      }
-    }
-
-    const curIds = p0s.map((i) => `${i.field}:${i.problem}`)
-    const same = curIds.filter((id) => prevP0Ids.includes(id))
-    if (same.length > 0 && prev) {
-      this.consecutiveLowGain++
-      if (this.consecutiveLowGain >= 2) {
-        return { status: "stalled",
-          reason: `Same P0 issues persist: ${same.slice(0, 2).join(", ")}`,
-          consecutiveLowGain: this.consecutiveLowGain, previousP0Ids: prevP0Ids }
-      }
-    }
-
-    return { status: "iterating", reason: "", consecutiveLowGain: this.consecutiveLowGain, previousP0Ids: curIds }
   }
 }
 

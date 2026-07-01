@@ -1,8 +1,9 @@
-﻿import { WorkflowStep, StreamedSection, Language, ReviewJson, CoachOutput, CoachIssueAnalysis, IterationContext, IterationRecord, ConvergenceResult, ConvergenceStatus } from "@/types"
+import { WorkflowStep, StreamedSection, Language, ReviewJson, CoachOutput, CoachIssueAnalysis, IterationContext, IterationRecord, ConvergenceResult, ConvergenceStatus } from "@/types"
 import { WorkflowEngine, WorkflowStepId } from "./workflow-engine"
 import { MarkdownBuilder } from "./markdown-builder"
 import { ProviderError } from "./provider"
 import { getProvider, getConfig } from "./providers"
+import { versionManager } from "./version-manager"
 import {
   CLARIFICATION_PROMPT, REQUIREMENT_PROMPT, PRD_PROMPT,
   FLOW_PROMPT, DATABASE_PROMPT, API_PROMPT,
@@ -41,19 +42,13 @@ export interface CoordinatorCallbacks {
 }
 
 export class Coordinator {
-  private workflow: WorkflowEngine
-  private builder: MarkdownBuilder
+  private workflow = new WorkflowEngine()
+  private builder = new MarkdownBuilder()
   private aborted = false
-  private iterationContexts: IterationContext[] = []
   private consecutiveLowGain = 0
 
-  constructor() {
-    this.workflow = new WorkflowEngine()
-    this.builder = new MarkdownBuilder()
-  }
-
-  /** Execute full workflow for one iteration round */
-  async execute(idea: string, language: Language, callbacks: CoordinatorCallbacks): Promise<void> {
+  /** Execute full 9-step workflow. Creates a Version on completion. */
+  async execute(idea: string, language: Language, callbacks: CoordinatorCallbacks): Promise<number | null> {
     this.workflow.reset()
     this.builder.reset()
     this.aborted = false
@@ -61,7 +56,7 @@ export class Coordinator {
     const provider = getProvider()
     const config = getConfig()
     const stepIds = [...this.workflow.getStepIds()]
-    const round = this.iterationContexts.length + 1
+    const parentNumber = versionManager.latestNumber
 
     for (const stepId of stepIds) {
       if (this.aborted) break
@@ -70,18 +65,17 @@ export class Coordinator {
       callbacks.onStepStart(step, this.workflow.getSteps())
 
       try {
-        const systemPrompt = SYSTEM_PROMPTS[stepId]?.[language] ?? SYSTEM_PROMPTS[stepId]?.en ?? ""
-        const userPrompt = language === "zh" ? `产品想法：${idea}` : `Product Idea: ${idea}`
-
-        let streamedContent = ""
-        await provider.generateStream(systemPrompt, userPrompt, config, (delta) => {
-          streamedContent += delta
+        const sys = SYSTEM_PROMPTS[stepId]?.[language] ?? SYSTEM_PROMPTS[stepId]?.en ?? ""
+        const user = language === "zh" ? `产品想法：${idea}` : `Product Idea: ${idea}`
+        let content = ""
+        await provider.generateStream(sys, user, config, (delta) => {
+          content += delta
           callbacks.onStreamChunk(stepId, delta)
         })
         if (this.aborted) break
 
         const title = SECTION_TITLES[stepId]?.[language] ?? `## ${stepId}\n\n`
-        const section: StreamedSection = { stepId, title, content: streamedContent + "\n\n" }
+        const section: StreamedSection = { stepId, title, content: content + "\n\n" }
         this.builder.append(section)
         this.workflow.completeCurrentStep()
         callbacks.onStepComplete(step, section, this.builder.getSections(), this.workflow.getSteps())
@@ -93,215 +87,157 @@ export class Coordinator {
       }
     }
 
-    if (this.aborted) return
+    if (this.aborted) return null
     callbacks.onComplete(this.builder.getSections())
 
-    // Parse review JSON from the last section
-    const review = this.parseReviewFromSections()
-    if (!review) {
-      callbacks.onError("ai-review" as WorkflowStepId, new Error("Failed to parse review JSON"))
-      return
-    }
+    // Parse review
+    const review = this._parseReview()
+    if (!review) { callbacks.onError("ai-review" as WorkflowStepId, new Error("Failed to parse review JSON")); return null }
     callbacks.onReviewReady(review)
 
-    // Generate coach from review JSON
-    const coach = await this.generateCoach(review, language)
+    // Coach
+    const coach = await this._generateCoach(review, language)
     callbacks.onCoachReady(coach)
 
-    // Check convergence
-    const convergence = this.checkConvergence(review, round)
-    callbacks.onConvergence(convergence)
+    // Create immutable version
+    const vn = versionManager.createVersion(idea, this.builder.getSections(), review, coach, parentNumber)
 
-    // Save iteration context
-    const prev = this.iterationContexts[this.iterationContexts.length - 1]
-    this.iterationContexts.push({
-      round,
-      originalIdea: prev?.optimizedIdea || idea,
-      optimizedIdea: undefined,
-      review,
-      coach,
-      timestamp: new Date().toISOString(),
-    })
+    // Convergence
+    callbacks.onConvergence(this._checkConvergence(review))
+
+    return vn
   }
 
-  /** Optimize: generate improved idea from original + review */
+  /** Optimize idea based on review → returns improved idea text. */
   async optimize(originalIdea: string, review: ReviewJson, language: Language): Promise<string> {
-    const provider = getProvider()
-    const config = getConfig()
-
-    const systemPrompt = OPTIMIZER_PROMPT[language] ?? OPTIMIZER_PROMPT.en
-
-    // Filter to P0 + P1 issues only
-    const relevantIssues = review.issues
-      .filter((i) => i.priority === "P0" || i.priority === "P1")
-      .map((i) => `[${i.priority}] ${i.field}: ${i.problem} → ${i.recommendation}`)
-      .join("\n")
-
-    // Include history to avoid repeating
-    const prevP0s = this.getPreviousP0Fields()
-    const historyBlock = prevP0s.length > 0
-      ? (language === "zh"
-          ? `\n\n前几轮已修复的问题领域（请勿重复）：${prevP0s.join("、")}`
-          : `\n\nPreviously addressed areas (do NOT reintroduce): ${prevP0s.join(", ")}`)
-      : ""
-
-    const userPrompt = language === "zh"
-      ? `原始想法：${originalIdea}\n\n审查发现的问题：\n${relevantIssues}${historyBlock}\n\n请输出改进后的产品想法。`
-      : `Original Idea: ${originalIdea}\n\nReview Issues:\n${relevantIssues}${historyBlock}\n\nOutput the improved product idea.`
-
-    const improved = await provider.generate(systemPrompt, userPrompt, config)
-    return improved.trim()
+    const sys = OPTIMIZER_PROMPT[language] ?? OPTIMIZER_PROMPT.en
+    const user = language === "zh"
+      ? `原始想法：${originalIdea}\n\n审查结果：${JSON.stringify(review)}`
+      : `Original Idea: ${originalIdea}\n\nReview: ${JSON.stringify(review)}`
+    const result = await getProvider().generate(sys, user, getConfig())
+    return result.trim() || originalIdea
   }
 
-  /** Get iteration records for display */
+  // ─── Version-aware methods (delegated) ───
+
+  async compareVersions(vA: number, vB: number, language: Language): Promise<string> {
+    return (await versionManager.compareVersions(vA, vB, language)).analysis
+  }
+
+  async generateEvolutionInsight(language: Language): Promise<string> {
+    return versionManager.generateEvolutionInsight(language)
+  }
+
+  // ─── Legacy compat (for components that still use these) ───
+
+  getIterationContexts(): IterationContext[] {
+    return versionManager.getAll().map((v) => ({
+      round: v.versionNumber,
+      originalIdea: v.idea,
+      optimizedIdea: v.parentVersionNumber ? v.idea : undefined,
+      review: v.review,
+      coach: v.coach,
+      timestamp: v.timestamp,
+    }))
+  }
+
   getIterationRecords(): IterationRecord[] {
-    return this.iterationContexts.map((ctx) => ({
-      round: ctx.round,
-      score: ctx.review.score,
-      maturity: ctx.review.maturity,
-      p0Count: ctx.review.issues.filter((i) => i.priority === "P0").length,
-      p1Count: ctx.review.issues.filter((i) => i.priority === "P1").length,
-      timestamp: new Date(ctx.timestamp).toLocaleTimeString(),
+    return versionManager.getAll().map((v) => ({
+      round: v.versionNumber,
+      score: v.score,
+      maturity: v.maturity,
+      p0Count: v.p0Count,
+      p1Count: v.p1Count,
+      timestamp: new Date(v.timestamp).toLocaleTimeString(),
     }))
   }
 
   getCurrentReview(): ReviewJson | null {
-    const last = this.iterationContexts[this.iterationContexts.length - 1]
-    return last?.review ?? null
+    return versionManager.viewing?.review ?? null
   }
 
   resetIterations(): void {
-    this.iterationContexts = []
+    versionManager.reset()
     this.consecutiveLowGain = 0
   }
 
+  abort(): void { this.aborted = true }
+
   // ─── Private ───
 
-  private parseReviewFromSections(): ReviewJson | null {
-    const sections = this.builder.getSections()
-    const reviewSection = sections.find((s) => s.stepId === "ai-review")
-    if (!reviewSection) return null
-
+  private _parseReview(): ReviewJson | null {
+    const sec = this.builder.getSections().find((s) => s.stepId === "ai-review")
+    if (!sec) return null
     try {
-      const cleaned = reviewSection.content
-        .replace(/```json|```/g, "")
-        .replace(/^\s*\{/, "{")
-        .trim()
-      // Find the JSON object in the content
-      const match = cleaned.match(/\{[\s\S]*\}/)
-      if (!match) return null
-      return JSON.parse(match[0]) as ReviewJson
+      const cleaned = sec.content.replace(/```json|```/g, "").trim()
+      const m = cleaned.match(/\{[\s\S]*\}/)
+      return m ? JSON.parse(m[0]) as ReviewJson : null
+    } catch { return null }
+  }
+
+  private async _generateCoach(review: ReviewJson, language: Language): Promise<CoachOutput> {
+    try {
+      const sys = COACH_PROMPT[language] ?? COACH_PROMPT.en
+      const raw = (await getProvider().generate(sys, JSON.stringify(review), getConfig()))
+        .replace(/```json|```/g, "").trim()
+      const m = raw.match(/\{[\s\S]*\}/)
+      if (!m) throw new Error("no json")
+      const p = JSON.parse(m[0])
+      return { maturity: review.maturity, score: review.score,
+        topIssues: (p.topIssues || []) as CoachIssueAnalysis[], coachAdvice: p.coachAdvice || "" }
     } catch {
-      return null
+      return this._fallbackCoach(review, language)
     }
   }
 
-  private async generateCoach(review: ReviewJson, language: Language): Promise<CoachOutput> {
-    const provider = getProvider()
-    const config = getConfig()
-
-    try {
-      const systemPrompt = COACH_PROMPT[language] ?? COACH_PROMPT.en
-      const userPrompt = JSON.stringify(review)
-
-      const rawJson = await provider.generate(systemPrompt, userPrompt, config)
-      const cleaned = rawJson.replace(/```json|```/g, "").trim()
-      const match = cleaned.match(/\{[\s\S]*\}/)
-      if (!match) throw new Error("No JSON found")
-      const parsed = JSON.parse(match[0])
-
-      return {
-        maturity: review.maturity,
-        score: review.score,
-        topIssues: (parsed.topIssues || []) as CoachIssueAnalysis[],
-        coachAdvice: parsed.coachAdvice || "",
-      }
-    } catch {
-      return this.fallbackCoach(review, language)
-    }
-  }
-
-  private fallbackCoach(review: ReviewJson, language: Language): CoachOutput {
+  private _fallbackCoach(review: ReviewJson, language: Language): CoachOutput {
     return {
-      maturity: review.maturity,
-      score: review.score,
-      topIssues: review.issues
-        .filter((i) => i.priority === "P0" || i.priority === "P1")
-        .slice(0, 3)
+      maturity: review.maturity, score: review.score,
+      topIssues: review.issues.filter((i) => i.priority === "P0" || i.priority === "P1").slice(0, 3)
         .map((i) => ({
-          priority: i.priority,
-          field: i.field,
-          problem: i.problem,
-          whyItMatters: language === "zh" ? "这是当前规格的一个关键问题" : "This is a critical gap in the current spec",
+          priority: i.priority, field: i.field, problem: i.problem,
+          whyItMatters: language === "zh" ? "关键缺口" : "Critical gap",
           solution: i.recommendation,
-          expectedBenefit: language === "zh" ? "修复后将显著提升产品规格质量" : "Fixing this will significantly improve spec quality",
+          expectedBenefit: language === "zh" ? "显著提升质量" : "Significantly improve quality",
         })),
-      coachAdvice: language === "zh"
-        ? `当前成熟度：${review.maturity}。重点解决 P0 问题。`
-        : `Current maturity: ${review.maturity}. Focus on resolving P0 issues.`,
+      coachAdvice: language === "zh" ? `成熟度：${review.maturity}。优先解决 P0。` : `Maturity: ${review.maturity}. Prioritize P0.`,
     }
   }
 
-  private checkConvergence(review: ReviewJson, round: number): ConvergenceResult {
-    const p0Issues = review.issues.filter((i) => i.priority === "P0")
-    const prev = this.iterationContexts[this.iterationContexts.length - 1]
-    const prevP0Ids = prev?.review.issues
-      .filter((i) => i.priority === "P0")
+  private _checkConvergence(review: ReviewJson): ConvergenceResult {
+    const p0s = review.issues.filter((i) => i.priority === "P0")
+    const versions = versionManager.getAll()
+    const prev = versions.length > 1 ? versions[versions.length - 2] : undefined
+    const prevP0Ids = prev?.review.issues.filter((i) => i.priority === "P0")
       .map((i) => `${i.field}:${i.problem}`) ?? []
 
-    // No P0 issues → converged
-    if (p0Issues.length === 0) {
-      return { status: "converged", reason: "All P0 issues resolved", consecutiveLowGain: 0, previousP0Ids: [] }
+    if (p0s.length === 0) {
+      return { status: "converged", reason: "All P0 issues resolved. Ready to build.", consecutiveLowGain: 0, previousP0Ids: [] }
     }
 
-    // Check score improvement
     if (prev) {
-      const scoreDelta = review.score - prev.review.score
-      if (scoreDelta < 3) {
-        this.consecutiveLowGain++
-      } else {
-        this.consecutiveLowGain = 0
-      }
-
+      const delta = review.score - prev.score
+      this.consecutiveLowGain = delta < 3 ? this.consecutiveLowGain + 1 : 0
       if (this.consecutiveLowGain >= 2) {
-        return {
-          status: "stalled",
-          reason: `Score improvement < 3 for ${this.consecutiveLowGain} consecutive rounds. Consider redefining the product direction.`,
-          consecutiveLowGain: this.consecutiveLowGain,
-          previousP0Ids: prevP0Ids,
-        }
+        return { status: "stalled",
+          reason: `Score improvement < 3 for 2+ rounds. AI recommends redefining product direction.`,
+          consecutiveLowGain: this.consecutiveLowGain, previousP0Ids: prevP0Ids }
       }
     }
 
-    // Check for same P0 issues persisting
-    const currentP0Ids = p0Issues.map((i) => `${i.field}:${i.problem}`)
-    const sameP0s = currentP0Ids.filter((id) => prevP0Ids.includes(id))
-    if (sameP0s.length > 0 && prev) {
+    const curIds = p0s.map((i) => `${i.field}:${i.problem}`)
+    const same = curIds.filter((id) => prevP0Ids.includes(id))
+    if (same.length > 0 && prev) {
       this.consecutiveLowGain++
       if (this.consecutiveLowGain >= 2) {
-        return {
-          status: "stalled",
-          reason: `Same P0 issues persist across rounds: ${sameP0s.slice(0, 2).join(", ")}`,
-          consecutiveLowGain: this.consecutiveLowGain,
-          previousP0Ids: prevP0Ids,
-        }
+        return { status: "stalled",
+          reason: `Same P0 issues persist: ${same.slice(0, 2).join(", ")}`,
+          consecutiveLowGain: this.consecutiveLowGain, previousP0Ids: prevP0Ids }
       }
     }
 
-    return { status: "iterating", reason: "", consecutiveLowGain: this.consecutiveLowGain, previousP0Ids: currentP0Ids }
+    return { status: "iterating", reason: "", consecutiveLowGain: this.consecutiveLowGain, previousP0Ids: curIds }
   }
-
-  private getPreviousP0Fields(): string[] {
-    const fields = new Set<string>()
-    for (const ctx of this.iterationContexts) {
-      for (const issue of ctx.review.issues) {
-        if (issue.priority === "P0") fields.add(issue.field)
-      }
-    }
-    return Array.from(fields)
-  }
-
-  abort(): void { this.aborted = true }
 }
 
 export const coordinator = new Coordinator()

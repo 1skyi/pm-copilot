@@ -1,15 +1,16 @@
-﻿"use client"
+"use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
 import { Sparkles, Check, Loader2, Clock, XCircle, Languages, RefreshCw } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { WorkflowPanel } from "@/components/workflow/WorkflowPanel"
+import { VersionTimeline } from "@/components/workspace/VersionTimeline"
 import { coordinator, CoordinatorCallbacks } from "@/lib/ai/coordinator"
 import { ProviderError } from "@/lib/ai/provider"
 import { WorkflowStepId } from "@/lib/ai/workflow-engine"
 import { WORKFLOW_STEPS, WORKFLOW_STEPS_ZH, RECENT_IDEAS, SAMPLE_PLACEHOLDERS } from "@/constants"
-import { WorkflowStep, GeneratePhase, StreamedSection, Language, ReviewJson, CoachOutput, ConvergenceResult, IterationRecord } from "@/types"
+import { WorkflowStep, GeneratePhase, StreamedSection, Language, ReviewJson, CoachOutput, ConvergenceResult, IterationRecord, VersionV1, QualityGateResult } from "@/types"
 
 interface WorkspaceProps {
   onStreamUpdate: (sections: StreamedSection[]) => void
@@ -27,6 +28,14 @@ interface WorkspaceProps {
   convergence: ConvergenceResult | null
   iterationRecords: IterationRecord[]
   maxIterations: number
+  versions: VersionV1[]
+  viewingVn: number | null
+  latestVn: number | null
+  bestVn: number | null
+  onSelectVersion: (vn: number) => void
+  qualityGate: QualityGateResult | null
+  onDiscardVersion: (vn: number) => void
+  onViewBest: () => void
 }
 
 export function Workspace({
@@ -34,32 +43,26 @@ export function Workspace({
   onReviewReady, onCoachReady, onConvergence,
   onSetOptimizeCallback, onReset,
   phase, language, onLanguageChange, review, convergence, iterationRecords, maxIterations,
+  versions, viewingVn, latestVn, bestVn, onSelectVersion, qualityGate, onDiscardVersion, onViewBest,
 }: WorkspaceProps) {
   const [projectName, setProjectName] = useState("")
   const [idea, setIdea] = useState("")
   const stepTemplates = language === "zh" ? WORKFLOW_STEPS_ZH : WORKFLOW_STEPS
-  const [steps, setSteps] = useState<WorkflowStep[]>(
-    stepTemplates.map((s) => ({ ...s, status: "PENDING" }))
-  )
+  const [steps, setSteps] = useState<WorkflowStep[]>(stepTemplates.map((s) => ({ ...s, status: "PENDING" })))
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const ideaRef = useRef("")
   const reviewRef = useRef<ReviewJson | null>(null)
   const phaseRef = useRef(phase)
-  phaseRef.current = phase // Always current — avoids stale closure in setTimeout
-
-  // Keep reviewRef in sync for use inside callbacks
+  phaseRef.current = phase
   useEffect(() => { reviewRef.current = review }, [review])
 
   const [placeholderIndex, setPlaceholderIndex] = useState(0)
-  // Pick random placeholder on client only (avoid SSR hydration mismatch)
-  useEffect(() => {
-    setPlaceholderIndex(Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length))
-  }, [])
+  useEffect(() => { setPlaceholderIndex(Math.floor(Math.random() * SAMPLE_PLACEHOLDERS.length)) }, [])
 
   useEffect(() => {
     if (phase === "idle") {
-      const templates = language === "zh" ? WORKFLOW_STEPS_ZH : WORKFLOW_STEPS
-      setSteps(templates.map((s) => ({ ...s, status: "PENDING" })))
+      const t = language === "zh" ? WORKFLOW_STEPS_ZH : WORKFLOW_STEPS
+      setSteps(t.map((s) => ({ ...s, status: "PENDING" })))
     }
   }, [language, phase])
 
@@ -67,43 +70,30 @@ export function Workspace({
     if (phaseRef.current !== "generating" && phaseRef.current !== "idle") return
     onPhaseChange("generating")
     ideaRef.current = ideaText
-
-    const callbacks: CoordinatorCallbacks = {
-      onStepStart: (_step, allSteps) => {
-        const bilingual = allSteps.map((s) => {
+    const cb: CoordinatorCallbacks = {
+      onStepStart: (_, allSteps) => {
+        const b = allSteps.map((s) => {
           const zh = WORKFLOW_STEPS_ZH.find((z) => z.id === s.id)
           return language === "zh" && zh ? { ...s, name: zh.name, runningText: zh.runningText } : s
         })
-        setSteps(bilingual)
+        setSteps(b)
       },
       onStreamChunk: (stepId, delta) => onStreamChunk(stepId, delta),
-      onStepComplete: (_step, _section, allSections, allSteps) => {
-        onStreamUpdate(allSections)
-        setSteps(allSteps)
-      },
-      onComplete: (allSections) => {
-        onStreamUpdate(allSections)
-        onPhaseChange("completed")
-      },
-      onReviewReady,
-      onCoachReady,
-      onConvergence,
+      onStepComplete: (_, __, allSections, allSteps) => { onStreamUpdate(allSections); setSteps(allSteps) },
+      onComplete: (allSections) => { onStreamUpdate(allSections); onPhaseChange("completed") },
+      onReviewReady, onCoachReady, onConvergence,
       onError: (_stepId, error) => {
         if (error instanceof ProviderError && error.code === "missing_key") {
-          setErrorMessage(error.message)
-          onPhaseChange("idle")
+          setErrorMessage(error.message); onPhaseChange("idle")
         }
       },
     }
-
-    coordinator.execute(ideaText, language, callbacks)
+    coordinator.execute(ideaText, language, cb)
   }, [language, onPhaseChange, onStreamUpdate, onStreamChunk, onReviewReady, onCoachReady, onConvergence])
 
   const handleGenerate = useCallback(() => {
-    if (phase !== "idle") return
-    setErrorMessage(null)
-    const ideaText = idea.trim() || projectName.trim() || (language === "zh" ? "未命名项目" : "Untitled Project")
-    runWorkflow(ideaText)
+    if (phase !== "idle") return; setErrorMessage(null)
+    runWorkflow(idea.trim() || projectName.trim() || (language === "zh" ? "未命名项目" : "Untitled Project"))
   }, [phase, idea, projectName, runWorkflow, language])
 
   const toggleLanguage = () => onLanguageChange(language === "en" ? "zh" : "en")
@@ -112,54 +102,30 @@ export function Workspace({
     switch (phase) {
       case "generating": return <><Loader2 className="h-3.5 w-3.5 animate-spin" />{language === "zh" ? "生成中..." : "Generating..."}</>
       case "completed": return <><Check className="h-3.5 w-3.5" />{language === "zh" ? "已完成" : "Completed"}</>
-      default: return <><Sparkles className="h-3.5 w-3.5" />{language === "zh" ? "开始生成" : "Generate"}</>
+      default: return <><Sparkles className="h-3.5 w-3.5" />{language === "zh" ? "生成" : "Generate"}</>
     }
   }
 
-  const canOptimize = convergence?.status === "iterating" && iterationRecords.length < maxIterations
   const isStalled = convergence?.status === "stalled"
+  const canOptimize = convergence?.status === "iterating" && iterationRecords.length < maxIterations
 
-  // Internal optimize: call coordinator.optimize(), set improved idea, re-run workflow
   const handleOptimize = useCallback(async () => {
-    if (!canOptimize || !reviewRef.current) return
-    const originalIdea = ideaRef.current || idea.trim() || projectName.trim()
-    if (!originalIdea) return
-
-    setErrorMessage(null)
-    onStreamUpdate([]) // Clear old spec
-    onPhaseChange("generating")
-
+    if (!canOptimize) return; setErrorMessage(null)
     try {
-      const improvedIdea = await coordinator.optimize(originalIdea, reviewRef.current, language)
-      setIdea(improvedIdea)
-      ideaRef.current = improvedIdea
-      // Phase is "generating" — reset to idle so runWorkflow guard passes
-      onPhaseChange("idle")
-      // Brief tick to let React process the state reset, then start
-      setTimeout(() => {
-        if (phaseRef.current !== "generating") {
-          onPhaseChange("generating")
-          runWorkflow(improvedIdea)
-        }
-      }, 100)
-    } catch {
-      setErrorMessage(language === "zh" ? "优化失败，请重试" : "Optimization failed, please retry")
-      onPhaseChange("idle")
-    }
+      const originalIdea = ideaRef.current || idea.trim() || projectName.trim() || (language === "zh" ? "未命名项目" : "Untitled Project")
+      if (!reviewRef.current) { setErrorMessage(language === "zh" ? "没有审查结果" : "No review available"); return }
+      const improved = await coordinator.optimize(originalIdea, reviewRef.current, language)
+      setIdea(improved); ideaRef.current = improved; onPhaseChange("idle")
+      setTimeout(() => { if (phaseRef.current !== "generating") { onPhaseChange("generating"); runWorkflow(improved) } }, 100)
+    } catch { setErrorMessage(language === "zh" ? "优化失败" : "Optimization failed"); onPhaseChange("idle") }
   }, [canOptimize, idea, projectName, language, onPhaseChange, onStreamUpdate, runWorkflow, phase])
 
-  // Register optimize callback for parent → CoachPanel
-  useEffect(() => {
-    onSetOptimizeCallback(() => handleOptimize)
-    return () => onSetOptimizeCallback(null)
-  }, [handleOptimize, onSetOptimizeCallback])
+  useEffect(() => { onSetOptimizeCallback(() => handleOptimize); return () => onSetOptimizeCallback(null) }, [handleOptimize, onSetOptimizeCallback])
 
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-5 py-5 border-b border-neutral-100">
-        <h2 className="text-sm font-semibold text-neutral-900">
-          {language === "zh" ? "工作区" : "Workspace"}
-        </h2>
+        <h2 className="text-sm font-semibold text-neutral-900">{language === "zh" ? "工作区" : "Workspace"}</h2>
         <button onClick={toggleLanguage} className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 transition-colors">
           <Languages className="h-3 w-3" />{language === "en" ? "中文" : "EN"}
         </button>
@@ -167,20 +133,12 @@ export function Workspace({
 
       <div className="px-5 py-4 space-y-3 border-b border-neutral-100">
         <div>
-          <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">
-            {language === "zh" ? "项目名称" : "Project Name"}
-          </label>
-          <Input value={projectName} onChange={(e) => setProjectName(e.target.value)}
-            placeholder="e.g. Campus Sports Management" className="mt-1 h-8 text-sm"
-            disabled={phase === "generating"} />
+          <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">{language === "zh" ? "项目名称" : "Project Name"}</label>
+          <Input value={projectName} onChange={(e) => setProjectName(e.target.value)} placeholder="e.g. Campus Sports Management" className="mt-1 h-8 text-sm" disabled={phase === "generating"} />
         </div>
         <div>
-          <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">
-            {language === "zh" ? "产品想法" : "Idea"}
-          </label>
-          <Input value={idea} onChange={(e) => setIdea(e.target.value)}
-            placeholder={SAMPLE_PLACEHOLDERS[placeholderIndex]} className="mt-1 h-8 text-sm"
-            disabled={phase === "generating"} />
+          <label className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider">{language === "zh" ? "产品想法" : "Idea"}</label>
+          <Input value={idea} onChange={(e) => setIdea(e.target.value)} placeholder={SAMPLE_PLACEHOLDERS[placeholderIndex]} className="mt-1 h-8 text-sm" disabled={phase === "generating"} />
         </div>
 
         {errorMessage && (
@@ -190,7 +148,6 @@ export function Workspace({
           </div>
         )}
 
-        {/* Convergence stalled warning */}
         {isStalled && (
           <div className="flex items-start gap-2 p-2.5 rounded-md bg-amber-50 border border-amber-100">
             <XCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
@@ -201,13 +158,25 @@ export function Workspace({
           </div>
         )}
 
-        <Button onClick={handleGenerate} className="w-full h-8 text-sm gap-1.5 transition-all"
-          size="sm" disabled={phase !== "idle"}
-          variant={phase === "completed" ? "outline" : "default"}>
+        {/* Quality Gate */}
+        {qualityGate && !qualityGate.passed && (
+          <div className="flex items-start gap-2 p-2.5 rounded-md bg-amber-50 border border-amber-100">
+            <XCircle className="h-3.5 w-3.5 text-amber-500 mt-0.5 flex-shrink-0" />
+            <div className="flex-1 text-xs text-amber-700">
+              <p className="font-medium mb-0.5">{language === "zh" ? "质量关卡未通过" : "Quality Gate Failed"}</p>
+              <p className="text-amber-600 mb-1.5">{qualityGate.message}</p>
+              <div className="flex gap-2">
+                <button onClick={onViewBest} className="text-[10px] px-2 py-0.5 rounded border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 transition-colors">{language === "zh" ? "查看最佳版本" : "View Best Version"}</button>
+                <button onClick={() => viewingVn && onDiscardVersion(viewingVn)} className="text-[10px] px-2 py-0.5 rounded border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 transition-colors">{language === "zh" ? "放弃此版本" : "Discard"}</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <Button onClick={handleGenerate} className="w-full h-8 text-sm gap-1.5 transition-all" size="sm" disabled={phase !== "idle"} variant={phase === "completed" ? "outline" : "default"}>
           {buttonContent()}
         </Button>
 
-        {/* Reset button when converged or stalled */}
         {(convergence?.status === "converged" || convergence?.status === "stalled" || convergence?.status === "limit_reached") && (
           <Button onClick={onReset} className="w-full h-8 text-sm gap-1.5" size="sm" variant="ghost">
             {language === "zh" ? "重新开始" : "Start Fresh"}
@@ -219,17 +188,17 @@ export function Workspace({
         <WorkflowPanel steps={steps} language={language} />
       </div>
 
+      {versions.length > 0 && (
+        <VersionTimeline versions={versions} viewingVn={viewingVn} latestVn={latestVn} bestVn={bestVn} onSelectVersion={onSelectVersion} language={language} />
+      )}
+
       {phase === "idle" && !review && (
         <div className="px-5 py-3 border-t border-neutral-100">
-          <h3 className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider mb-2">
-            {language === "zh" ? "最近想法" : "Recent Ideas"}
-          </h3>
+          <h3 className="text-[11px] font-medium text-neutral-400 uppercase tracking-wider mb-2">{language === "zh" ? "最近想法" : "Recent Ideas"}</h3>
           <div className="space-y-0.5">
             {RECENT_IDEAS.map((item) => (
               <button key={item.name} className="flex w-full items-center gap-2 px-2 py-1.5 rounded text-left hover:bg-neutral-50 transition-colors">
-                <Clock className="h-3 w-3 text-neutral-300 flex-shrink-0" />
-                <span className="text-xs text-neutral-600 truncate">{item.name}</span>
-                <span className="text-[10px] text-neutral-300 ml-auto flex-shrink-0">{item.date}</span>
+                <Clock className="h-3 w-3 text-neutral-300 flex-shrink-0" /><span className="text-xs text-neutral-600 truncate">{item.name}</span><span className="text-[10px] text-neutral-300 ml-auto flex-shrink-0">{item.date}</span>
               </button>
             ))}
           </div>

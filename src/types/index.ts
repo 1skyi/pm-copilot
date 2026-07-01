@@ -1,4 +1,4 @@
-﻿export type WorkflowStepStatus = "PENDING" | "RUNNING" | "COMPLETED" | "ERROR"
+export type WorkflowStepStatus = "PENDING" | "RUNNING" | "COMPLETED" | "ERROR"
 export type Language = "en" | "zh"
 export type GeneratePhase = "idle" | "generating" | "completed"
 export type MaturityLevel = "Idea" | "Prototype" | "MVP Ready" | "Market Ready" | "Investment Ready"
@@ -88,4 +88,51 @@ export interface ConvergenceResult {
   reason: string
   consecutiveLowGain: number   // 连续低提升轮数
   previousP0Ids: string[]      // 上一轮 P0 问题标识（用于去重）
+}
+
+// ─── Sprint 5 Final: Version-Driven Architecture ───
+
+/** Immutable snapshot of one complete AI generation run. Never mutated after creation. */
+export interface VersionV1 {
+  versionNumber: number
+  idea: string
+  sections: StreamedSection[]
+  review: ReviewJson
+  coach: CoachOutput | null
+  score: number
+  maturity: MaturityLevel
+  p0Count: number
+  p1Count: number
+  timestamp: string              // ISO 8601
+  parentVersionNumber: number | null
+}
+
+/** Quality gate verdict after comparing a new version against the current best. */
+export interface QualityGateResult {
+  passed: boolean
+  bestVersionNumber: number
+  bestScore: number
+  newScore: number
+  message: string
+}
+
+/** Lightweight snapshot for charting / timeline display. */
+export interface EvolutionSnapshot {
+  versionNumber: number
+  score: number
+  maturity: MaturityLevel
+  p0Count: number
+  p1Count: number
+  timestamp: string
+}
+
+export interface CompareResult {
+  versionA: number
+  versionB: number
+  analysis: string
+}
+
+export interface EvolutionInsight {
+  summary: string
+  highlights: string[]
 }

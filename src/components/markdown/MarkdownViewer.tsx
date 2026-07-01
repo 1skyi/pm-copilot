@@ -123,12 +123,19 @@ export function MarkdownViewer({
 
   useEffect(() => { if (phase === "generating") userScrolledUpRef.current = false }, [phase])
 
-  // Smart scroll lock: pause when user scrolls up, resume when back at bottom
-  const handleScroll = useCallback(() => {
+  // Smart scroll lock: only lock when user INTENTIONALLY scrolls up (via wheel).
+  // Prevents programmatic scrollTo from accidentally disabling auto-follow.
+  const handleWheel = useCallback((e: React.WheelEvent) => {
     const el = scrollRef.current
     if (!el) return
-    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40
-    userScrolledUpRef.current = !atBottom
+    if (e.deltaY > 0) {
+      // Scrolling down — check if reached bottom
+      const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40
+      if (atBottom) userScrolledUpRef.current = false
+    } else if (e.deltaY < 0) {
+      // Scrolling up — user wants to read earlier content, pause auto-follow
+      userScrolledUpRef.current = true
+    }
   }, [])
 
   // Jump to section when workflow step is clicked
@@ -204,7 +211,7 @@ export function MarkdownViewer({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto" ref={scrollRef} onScroll={handleScroll}>
+      <div className="flex-1 overflow-y-auto" ref={scrollRef} onWheel={handleWheel}>
         {/* Historical version banner */}
         {!isLatest && viewingVn && phase === "completed" && latestVn && (
           <div className="mx-6 mt-4 flex items-center gap-2 px-3 py-2 rounded-md bg-amber-50 border border-amber-100 text-[11px] text-amber-700">

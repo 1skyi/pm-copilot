@@ -136,9 +136,9 @@ export function MarkdownViewer({
         <div className="flex items-center gap-1">
           {viewingVn && (
             <div className="flex items-center gap-1 mr-2 border-r border-neutral-100 pr-2">
-              <button onClick={() => hasPrev && onSelectVersion(viewingVn - 1)} disabled={!hasPrev} className="p-1 rounded text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed" title={t.prev}><ChevronLeft className="h-3 w-3" /></button>
+              <button onClick={() => hasPrev && onSelectVersion(versions[idx - 1].versionNumber)} disabled={!hasPrev} className="p-1 rounded text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed" title={t.prev}><ChevronLeft className="h-3 w-3" /></button>
               <span className="text-[10px] text-neutral-500 font-mono min-w-[40px] text-center">v{viewingVn}</span>
-              <button onClick={() => hasNext && onSelectVersion(viewingVn + 1)} disabled={!hasNext} className="p-1 rounded text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed" title={t.next}><ChevronRight className="h-3 w-3" /></button>
+              <button onClick={() => hasNext && onSelectVersion(versions[idx + 1].versionNumber)} disabled={!hasNext} className="p-1 rounded text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed" title={t.next}><ChevronRight className="h-3 w-3" /></button>
               {isBest && <Star className="h-3 w-3 text-amber-400" />}
               {isLatest && !isBest && <span className="text-[9px] text-blue-400 font-medium">NEW</span>}
             </div>

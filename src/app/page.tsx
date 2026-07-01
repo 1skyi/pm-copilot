@@ -98,15 +98,18 @@ export default function Home() {
     }
     if (p === "completed") {
       setStreamingContent({}); setActiveStreamingStep(null)
-      sync()
-      const ln = versionManager.latestNumber
-      if (ln !== null) setQualityGate(versionManager.checkQualityGate(ln))
+      // NOTE: Version is created AFTER onComplete, so sync() is deferred to onConvergence
     }
   }, [sync])
 
   const handleReviewReady = useCallback((_: ReviewJson) => {}, [])
   const handleCoachReady = useCallback((_: CoachOutput) => {}, [])
-  const handleConvergence = useCallback((c: ConvergenceResult) => setConvergence(c), [])
+  const handleConvergence = useCallback((c: ConvergenceResult) => {
+    setConvergence(c)
+    sync()
+    const ln = versionManager.latestNumber
+    if (ln !== null) setQualityGate(versionManager.checkQualityGate(ln))
+  }, [sync])
   const handleLanguageChange = useCallback((l: Language) => setLanguage(l), [])
   const handleOptimize = useCallback(() => { if (optimizeCallback) optimizeCallback() }, [optimizeCallback])
   const handleSetOptimizeCallback = useCallback((cb: (() => void) | null) => setOptimizeCallback(cb), [])

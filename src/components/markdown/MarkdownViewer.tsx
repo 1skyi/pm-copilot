@@ -118,7 +118,7 @@ export function MarkdownViewer({
   const handleCopy = useCallback(async () => { try { await navigator.clipboard.writeText(getFullText()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch {} }, [getFullText])
   const handleExport = useCallback(() => { const b = new Blob([getFullText()], { type: "text/markdown" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "pm-copilot-output.md"; a.click(); URL.revokeObjectURL(u) }, [getFullText])
 
-  const canOptimize = convergence?.status === "iterating" && iterationRecords.length < maxIterations
+  const canOptimize = convergence?.status === "iterating"
   const hasVersions = versions.length >= 2
   const idx = versions.findIndex((v) => v.versionNumber === viewingVn)
   const hasPrev = idx > 0; const hasNext = idx >= 0 && idx < versions.length - 1

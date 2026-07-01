@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
-import { Sparkles, Check, Loader2, Clock, XCircle, Languages, RefreshCw } from "lucide-react"
+import { Sparkles, Check, Loader2, Clock, XCircle, Languages } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { WorkflowPanel } from "@/components/workflow/WorkflowPanel"
@@ -107,10 +107,11 @@ export function Workspace({
   }
 
   const isStalled = convergence?.status === "stalled"
-  const canOptimize = convergence?.status === "iterating" && iterationRecords.length < maxIterations
+  const canOptimize = convergence?.status === "iterating" && true
 
   const handleOptimize = useCallback(async () => {
     if (!canOptimize) return; setErrorMessage(null)
+    onStreamUpdate([]) // Clear old spec so user sees fresh streaming
     try {
       const originalIdea = ideaRef.current || idea.trim() || projectName.trim() || (language === "zh" ? "未命名项目" : "Untitled Project")
       if (!reviewRef.current) { setErrorMessage(language === "zh" ? "没有审查结果" : "No review available"); return }
@@ -118,7 +119,7 @@ export function Workspace({
       setIdea(improved); ideaRef.current = improved; onPhaseChange("idle")
       setTimeout(() => { if (phaseRef.current !== "generating") { onPhaseChange("generating"); runWorkflow(improved) } }, 100)
     } catch { setErrorMessage(language === "zh" ? "优化失败" : "Optimization failed"); onPhaseChange("idle") }
-  }, [canOptimize, idea, projectName, language, onPhaseChange, onStreamUpdate, runWorkflow, phase])
+  }, [canOptimize, idea, projectName, language, onPhaseChange, onStreamUpdate, runWorkflow])
 
   useEffect(() => { onSetOptimizeCallback(() => handleOptimize); return () => onSetOptimizeCallback(null) }, [handleOptimize, onSetOptimizeCallback])
 

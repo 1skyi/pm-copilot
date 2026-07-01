@@ -48,8 +48,8 @@ export function Sidebar() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center gap-2 px-5 py-5 border-b border-neutral-100 dark:border-neutral-800">
-        <Sparkles className="h-5 w-5 text-neutral-800 dark:text-neutral-200" />
-        <span className="text-sm font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
+        <Sparkles className="h-5 w-5 text-black dark:text-white" />
+        <span className="text-sm font-semibold tracking-tight text-black dark:text-white">
           PM Copilot
         </span>
       </div>
@@ -65,7 +65,7 @@ export function Sidebar() {
               className={cn(
                 "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 activeId === item.id
-                  ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 font-medium"
+                  ? "bg-neutral-100 dark:bg-neutral-800 text-black dark:text-white font-medium"
                   : "text-neutral-500 dark:text-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 hover:text-neutral-700 dark:hover:text-neutral-200"
               )}
             >
@@ -88,7 +88,7 @@ export function Sidebar() {
         <div>
           <div className="flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-neutral-400" />
-            <span className="text-xs text-neutral-400">PM Copilot</span>
+            <span className="text-xs text-neutral-500 dark:text-neutral-300">PM Copilot</span>
           </div>
           <p className="text-[10px] text-neutral-300 mt-0.5">v1.0</p>
         </div>

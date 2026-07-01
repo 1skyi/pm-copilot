@@ -128,7 +128,7 @@ export function Workspace({
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between px-5 py-5 border-b border-neutral-100">
-        <h2 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{language === "zh" ? "工作区" : "Workspace"}</h2>
+        <h2 className="text-sm font-semibold text-black dark:text-white">{language === "zh" ? "工作区" : "Workspace"}</h2>
         <button onClick={toggleLanguage} className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 transition-colors">
           <Languages className="h-3 w-3" />{language === "en" ? "中文" : "EN"}
         </button>

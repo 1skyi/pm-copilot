@@ -1,6 +1,7 @@
 ﻿"use client"
 
 import { useState } from "react"
+import Link from "next/link"
 import {
   LayoutDashboard,
   FolderKanban,
@@ -38,8 +39,9 @@ export function Sidebar() {
         {MENU_ITEMS.map((item) => {
           const Icon = iconMap[item.icon]
           return (
-            <button
+            <Link
               key={item.id}
+              href={item.id === "projects" ? "/" : `/${item.id}`}
               onClick={() => setActiveId(item.id)}
               className={cn(
                 "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
@@ -50,7 +52,7 @@ export function Sidebar() {
             >
               {Icon && <Icon className="h-4 w-4 flex-shrink-0" />}
               <span>{item.label}</span>
-            </button>
+            </Link>
           )
         })}
       </nav>

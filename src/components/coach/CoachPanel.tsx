@@ -27,12 +27,14 @@ const U: Record<Language, Record<string, string>> = {
     stalled:"Iteration Stalled — consider redefining product direction", converged:"All P0 issues resolved!",
     whyItMatters:"Why It Matters", solution:"Solution", benefit:"Expected Benefit",
     latestBadge:"Latest", bestBadge:"Best", viewing:"Viewing",
+    p0Trend:"P0 trend", resolved:"resolved",
     qualityFail:"Quality Gate: This version didn't exceed the best", viewBest:"View Best Version", discard:"Discard" },
   zh: { maturity:"产品成熟度", score:"评分", issues:"问题", coachAdvice:"教练建议", optimize:"优化并重新生成",
     optimizeDesc:"修复审查问题，改进产品想法", history:"迭代历史", round:"轮", time:"时间",
     stalled:"迭代停滞 — 建议重新定义产品方向", converged:"全部 P0 问题已解决！",
     whyItMatters:"为什么重要", solution:"解决方案", benefit:"预期收益",
     latestBadge:"最新", bestBadge:"最佳", viewing:"查看",
+    p0Trend:"P0趋势", resolved:"已解决",
     qualityFail:"质量关卡：此版本未超过最佳版本", viewBest:"查看最佳版本", discard:"放弃此版本" },
 }
 
@@ -103,13 +105,38 @@ export function CoachPanel({
 
       {iterationRecords.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-2"><History className="h-3 w-3 text-neutral-400" /><h3 className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">{t.history}</h3><span className="text-[10px] text-neutral-300">{cur}/{maxIterations}</span></div>
-          <div className="space-y-1">
-            {iterationRecords.map((h) => {
+          <div className="flex items-center gap-2 mb-2"><History className="h-3 w-3 text-neutral-400" /><h3 className="text-[10px] font-semibold text-neutral-400 uppercase tracking-wider">{t.history}</h3>
+            {iterationRecords.length > 1 && (
+              <span className="text-[9px] text-neutral-400 ml-auto">
+                {t.p0Trend}: {iterationRecords.map((h) => "P0×" + h.p0Count).join(" → ")}
+              </span>
+            )}
+          </div>
+          <div className="space-y-0.5">
+            {iterationRecords.map((h, i) => {
               const isBestRec = h.round === bestVersionNumber
-              return <div key={h.round} className={isBestRec ? "flex items-center justify-between text-[10px] text-neutral-500 px-2 py-1 rounded bg-amber-50 border border-amber-100" : "flex items-center justify-between text-[10px] text-neutral-500 px-2 py-1 rounded bg-neutral-50"}>
-                <span>{t.round}{h.round}{isBestRec && <Star className="h-2 w-2 inline ml-0.5 text-amber-400" />}</span><span className="text-neutral-400">{h.maturity}</span><span>{h.score}</span><span className="text-red-400">P0×{h.p0Count}</span><span className="text-neutral-300">{h.timestamp}</span>
-              </div>
+              const prev = i > 0 ? iterationRecords[i - 1] : null
+              const p0Delta = prev ? prev.p0Count - h.p0Count : 0
+              const scoreDelta = prev ? h.score - prev.score : 0
+              return (
+                <div key={h.round}>
+                  {prev && (
+                    <div className="flex items-center gap-1 text-[9px] text-neutral-400 px-2 py-0.5">
+                      <span className="text-neutral-300">↓</span>
+                      {p0Delta > 0 && <span className="text-emerald-500">P0 -{p0Delta}</span>}
+                      {p0Delta === 0 && <span className="text-neutral-400">P0 0</span>}
+                      {p0Delta < 0 && <span className="text-red-400">P0 +{Math.abs(p0Delta)}</span>}
+                      <span className="text-neutral-300">·</span>
+                      {scoreDelta > 0 && <span className="text-emerald-500">Score +{scoreDelta}</span>}
+                      {scoreDelta === 0 && <span className="text-neutral-400">Score 0</span>}
+                      {scoreDelta < 0 && <span className="text-red-400">Score {scoreDelta}</span>}
+                    </div>
+                  )}
+                  <div className={isBestRec ? "flex items-center justify-between text-[10px] text-neutral-500 px-2 py-1 rounded bg-amber-50 border border-amber-100" : "flex items-center justify-between text-[10px] text-neutral-500 px-2 py-1 rounded bg-neutral-50"}>
+                    <span>{t.round}{h.round}{isBestRec && <Star className="h-2 w-2 inline ml-0.5 text-amber-400" />}</span><span className="text-neutral-400">{h.maturity}</span><span>{h.score}</span><span className="text-red-400">P0×{h.p0Count}</span><span className="text-neutral-300">{h.timestamp}</span>
+                  </div>
+                </div>
+              )
             })}
           </div>
         </div>

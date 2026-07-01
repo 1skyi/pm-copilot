@@ -185,13 +185,13 @@ export function Workspace({
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <WorkflowPanel steps={steps} language={language} />
-      </div>
-
       {versions.length > 0 && (
         <VersionTimeline versions={versions} viewingVn={viewingVn} latestVn={latestVn} bestVn={bestVn} onSelectVersion={onSelectVersion} language={language} />
       )}
+
+      <div className="flex-1 overflow-y-auto">
+        <WorkflowPanel steps={steps} language={language} />
+      </div>
 
       {phase === "idle" && !review && (
         <div className="px-5 py-3 border-t border-neutral-100">

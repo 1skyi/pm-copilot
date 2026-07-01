@@ -51,10 +51,12 @@ const MAT_BG: Record<string, string> = {
 
 const UI: Record<Language, Record<string, string>> = {
   en: { title:"Result", generating:"Generating...", copy:"Copy", copied:"Copied", export:"Export",
+    historyBanner:"You are viewing v{0} (historical). Latest is v{1}.", viewLatest:"View Latest", nextSteps:"Next Steps",
     thinking:"AI is thinking...", emptyTitle:"PM Copilot",
     emptyDesc:"Describe your product idea, and AI will automatically generate structured documents for you.",
     prev:"Previous", next:"Next", compare:"Compare", evolution:"Evolution" },
   zh: { title:"生成结果", generating:"生成中...", copy:"复制", copied:"已复制", export:"导出",
+    historyBanner:"你正在查看 v{0}（历史版本）。最新版本是 v{1}。", viewLatest:"查看最新", nextSteps:"下一步",
     thinking:"AI 正在思考...", emptyTitle:"PM Copilot",
     emptyDesc:"描述你的产品想法，AI 将自动生成结构化文档。",
     prev:"上一版", next:"下一版", compare:"对比", evolution:"演进" },
@@ -156,9 +158,27 @@ export function MarkdownViewer({
       </div>
 
       <div className="flex-1 overflow-y-auto" ref={scrollRef} onScroll={handleScroll}>
+        {/* Historical version banner */}
+        {!isLatest && viewingVn && phase === "completed" && latestVn && (
+          <div className="mx-6 mt-4 flex items-center gap-2 px-3 py-2 rounded-md bg-amber-50 border border-amber-100 text-[11px] text-amber-700">
+            <span>{t.historyBanner.replace("{0}", String(viewingVn)).replace("{1}", String(latestVn))}</span>
+            <button onClick={() => onSelectVersion(latestVn)} className="ml-auto text-[10px] px-2 py-0.5 rounded border border-amber-200 bg-white text-amber-700 hover:bg-amber-50 font-medium transition-colors">{t.viewLatest}</button>
+          </div>
+        )}
+
         {compareView && <VersionCompare vA={compareView.vA} vB={compareView.vB} language={language} onClose={onCloseCompare} versions={versions} />}
         {evolutionInsight && <EvolutionInsight insight={evolutionInsight} language={language} onClose={onCloseEvolution} />}
 
+        {/* Coach Panel — ABOVE markdown for visibility */}
+        {coach && !compareView && !evolutionInsight && (
+          <CoachPanel
+            coach={coach} convergence={convergence} iterationRecords={iterationRecords} maxIterations={maxIterations} language={language} onOptimize={onOptimize} canOptimize={canOptimize}
+            isLatest={isLatest} isBest={isBest} currentVersionNumber={viewingVn ?? 0} bestVersionNumber={bestVn ?? 0}
+            onViewBest={onViewBest} qualityGate={qualityGate} onDiscardVersion={() => viewingVn && onDiscardVersion(viewingVn)}
+          />
+        )}
+
+        {/* Markdown content */}
         {!compareView && !evolutionInsight && (
           <div className="px-6 py-5">
             <article className="prose prose-neutral max-w-none prose-headings:font-semibold prose-headings:text-neutral-900 prose-headings:tracking-tight prose-h1:text-xl prose-h2:text-lg prose-h3:text-base prose-p:text-neutral-600 prose-p:leading-relaxed prose-p:text-base prose-a:text-neutral-800 prose-a:underline prose-a:underline-offset-2 prose-strong:text-neutral-800 prose-strong:font-semibold prose-code:text-neutral-700 prose-code:bg-neutral-100 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-pre:bg-neutral-900 prose-pre:text-neutral-100 prose-pre:text-xs prose-table:text-sm prose-th:font-medium prose-th:text-neutral-700 prose-td:text-neutral-600 prose-blockquote:text-neutral-500 prose-blockquote:border-neutral-200 prose-li:text-neutral-600 prose-li:text-base prose-hr:border-neutral-100">
@@ -171,18 +191,10 @@ export function MarkdownViewer({
 
         {/* Version actions */}
         {!compareView && !evolutionInsight && viewingVn && hasVersions && phase === "completed" && (
-          <div className="px-6 pb-3 flex items-center gap-2">
+          <div className="px-6 pb-4 flex items-center gap-2">
             <button onClick={() => { const other = idx === 0 ? versions[1].versionNumber : versions[0].versionNumber; onCompare(viewingVn, other) }} className="flex items-center gap-1 text-[10px] text-neutral-400 hover:text-neutral-600 transition-colors"><GitCompare className="h-3 w-3" />{t.compare}</button>
             <button onClick={onShowEvolution} className="flex items-center gap-1 text-[10px] text-neutral-400 hover:text-neutral-600 transition-colors"><TrendingUp className="h-3 w-3" />{t.evolution}</button>
           </div>
-        )}
-
-        {coach && !compareView && !evolutionInsight && (
-          <CoachPanel
-            coach={coach} convergence={convergence} iterationRecords={iterationRecords} maxIterations={maxIterations} language={language} onOptimize={onOptimize} canOptimize={canOptimize}
-            isLatest={isLatest} isBest={isBest} currentVersionNumber={viewingVn ?? 0} bestVersionNumber={bestVn ?? 0}
-            onViewBest={onViewBest} qualityGate={qualityGate} onDiscardVersion={() => viewingVn && onDiscardVersion(viewingVn)}
-          />
         )}
       </div>
     </div>

@@ -117,7 +117,7 @@ export function Workspace({
     try {
       const originalIdea = ideaRef.current || idea.trim() || projectName.trim() || (language === "zh" ? "未命名项目" : "Untitled Project")
       if (!reviewRef.current) { setErrorMessage(language === "zh" ? "没有审查结果" : "No review available"); return }
-      const improved = await coordinator.optimize(originalIdea, reviewRef.current, language)
+      const { improvedIdea: improved } = await coordinator.optimize(originalIdea, reviewRef.current, language)
       setIdea(improved); ideaRef.current = improved; onPhaseChange("idle")
       setTimeout(() => { if (phaseRef.current !== "generating") { onPhaseChange("generating"); runWorkflow(improved) } }, 100)
     } catch { setErrorMessage(language === "zh" ? "优化失败" : "Optimization failed"); onPhaseChange("idle") }

@@ -178,3 +178,11 @@ export interface EvolutionInsight {
   summary: string
   highlights: string[]
 }
+// ─── Optimizer PATCH ENGINE ───
+
+export interface FieldPatch {
+  from: string
+  to: string
+}
+
+export type OptimizerPatch = Record<string, FieldPatch>

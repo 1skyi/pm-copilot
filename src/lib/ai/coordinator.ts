@@ -1,4 +1,4 @@
-import { WorkflowStep, StreamedSection, Language, ReviewJson, CoachOutput, CoachIssueAnalysis, IterationContext, IterationRecord, ConvergenceResult, ConvergenceStatus, FieldDelta, TrackedIssue, VersionDelta, IssueStatus } from "@/types"
+import { WorkflowStep, StreamedSection, Language, ReviewJson, CoachOutput, CoachIssueAnalysis, IterationContext, IterationRecord, ConvergenceResult, ConvergenceStatus, FieldDelta, TrackedIssue, VersionDelta, IssueStatus, OptimizerPatch } from "@/types"
 import { WorkflowEngine, WorkflowStepId } from "./workflow-engine"
 import { MarkdownBuilder } from "./markdown-builder"
 import { ProviderError } from "./provider"
@@ -219,8 +219,11 @@ export class Coordinator {
     }
   }
 
-  /** Optimize: generate improved idea based on review deltas. */
-  async optimize(originalIdea: string, review: ReviewJson, language: Language): Promise<string> {
+  /**
+   * PATCH ENGINE: generates field-level delta patches from review feedback.
+   * Returns the structured patch + a synthesized improved idea for execution.
+   */
+  async optimize(originalIdea: string, review: ReviewJson, language: Language): Promise<{ patch: OptimizerPatch; improvedIdea: string }> {
     const sys = OPTIMIZER_PROMPT[language] ?? OPTIMIZER_PROMPT.en
     const issuesSummary = review.issues
       .filter((i) => i.priority === "P0" || i.priority === "P1")
@@ -228,11 +231,39 @@ export class Coordinator {
       .join("\n")
 
     const user = language === "zh"
-      ? `原始想法：${originalIdea}\n\n需修复的问题（仅修复这些，不新增功能）：\n${issuesSummary}`
-      : `Original Idea: ${originalIdea}\n\nIssues to fix (only fix these, do NOT add features):\n${issuesSummary}`
+      ? `原始想法：${originalIdea}\n\n需修复的问题：\n${issuesSummary}`
+      : `Original Idea: ${originalIdea}\n\nIssues to fix:\n${issuesSummary}`
 
     const result = await getProvider().generate(sys, user, getConfig())
-    return result.trim() || originalIdea
+
+    // Parse PATCH JSON from LLM output
+    let patch: OptimizerPatch = {}
+    try {
+      const cleaned = result.replace(/```json|```/g, "").trim()
+      const m = cleaned.match(/\{[\s\S]*\}/)
+      if (m) patch = JSON.parse(m[0]) as OptimizerPatch
+    } catch { /* fall through to fallback */ }
+
+    const improvedIdea = this._synthesizeIdea(originalIdea, patch, language) || result.trim() || originalIdea
+    return { patch, improvedIdea }
+  }
+
+  /** Convert field patches back into a readable idea string. */
+  private _synthesizeIdea(original: string, patch: OptimizerPatch, language: Language): string {
+    const entries = Object.entries(patch).filter(([, v]) => v.to)
+    if (!entries.length) return original
+    let result = original
+    for (const [, v] of entries) {
+      if (v.from && result.toLowerCase().includes(v.from.toLowerCase())) {
+        result = result.split(v.from).join(v.to)
+      }
+    }
+    const additions = entries.filter(([, v]) => !v.from)
+    if (additions.length) {
+      const suffix = additions.map(([, v]) => v.to).join(". ")
+      result = result ? result + ". " + suffix + "." : suffix
+    }
+    return result || original
   }
 
   /** Debug state: exposes internal state for transparency. */

@@ -107,7 +107,7 @@ export function Workspace({
   }
 
   const isStalled = convergence?.status === "stalled"
-  const canOptimize = convergence?.status === "iterating" && true
+  const canOptimize = convergence?.status !== "stalled" && true
 
   const handleOptimize = useCallback(async () => {
     if (!canOptimize) return; setErrorMessage(null)

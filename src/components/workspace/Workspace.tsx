@@ -176,7 +176,7 @@ export function Workspace({
           </div>
         )}
 
-        <Button onClick={handleGenerate} className="w-full h-8 text-sm gap-1.5 transition-all" size="sm" disabled={phase !== "idle"} variant={phase === "completed" ? "outline" : "default"}>
+        <Button onClick={handleGenerate} size="sm" disabled={phase !== "idle"} variant={phase === "completed" ? "default" : "default"} className={phase === "completed" ? "w-full h-8 text-sm gap-1.5 transition-all bg-emerald-500 hover:bg-emerald-600 text-white" : "w-full h-8 text-sm gap-1.5 transition-all"}>
           {buttonContent()}
         </Button>
 

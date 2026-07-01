@@ -1,6 +1,6 @@
 ﻿"use client"
 
-import { useState } from "react"
+import { usePathname } from "next/navigation"
 import Link from "next/link"
 import {
   LayoutDashboard,
@@ -22,7 +22,8 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
 }
 
 export function Sidebar() {
-  const [activeId, setActiveId] = useState("projects")
+  const pathname = usePathname()
+  const activeId = pathname === "/" ? "projects" : pathname.replace("/", "")
 
   return (
     <div className="flex h-full flex-col">
@@ -42,7 +43,7 @@ export function Sidebar() {
             <Link
               key={item.id}
               href={item.id === "projects" ? "/" : `/${item.id}`}
-              onClick={() => setActiveId(item.id)}
+
               className={cn(
                 "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
                 activeId === item.id

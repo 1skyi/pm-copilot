@@ -36,6 +36,7 @@ interface WorkspaceProps {
   qualityGate: QualityGateResult | null
   onDiscardVersion: (vn: number) => void
   onViewBest: () => void
+  onStepClick: (stepId: string) => void
 }
 
 export function Workspace({
@@ -44,6 +45,7 @@ export function Workspace({
   onSetOptimizeCallback, onReset,
   phase, language, onLanguageChange, review, convergence, iterationRecords, maxIterations,
   versions, viewingVn, latestVn, bestVn, onSelectVersion, qualityGate, onDiscardVersion, onViewBest,
+  onStepClick,
 }: WorkspaceProps) {
   const [projectName, setProjectName] = useState("")
   const [idea, setIdea] = useState("")
@@ -190,7 +192,7 @@ export function Workspace({
       )}
 
       <div className="flex-1 overflow-y-auto">
-        <WorkflowPanel steps={steps} language={language} />
+        <WorkflowPanel steps={steps} language={language} onStepClick={onStepClick} />
       </div>
 
       {phase === "idle" && !review && (

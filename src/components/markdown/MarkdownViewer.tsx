@@ -27,6 +27,7 @@ interface MarkdownViewerProps {
   compareView: { vA: number; vB: number } | null
   onCompare: (vA: number, vB: number) => void; onCloseCompare: () => void
   evolutionInsight: string | null; onShowEvolution: () => void; onCloseEvolution: () => void
+  scrollToStepId: string | null
 }
 
 const featureIconMap: Record<string, React.ComponentType<{ className?: string }>> = { FileText, Layers, Database, CheckCircle }
@@ -51,15 +52,15 @@ const MAT_BG: Record<string, string> = {
 
 const UI: Record<Language, Record<string, string>> = {
   en: { title:"Result", generating:"Generating...", copy:"Copy", copied:"Copied", export:"Export",
-    historyBanner:"You are viewing v{0} (historical). Latest is v{1}.", viewLatest:"View Latest", nextSteps:"Next Steps",
     thinking:"AI is thinking...", emptyTitle:"PM Copilot",
     emptyDesc:"Describe your product idea, and AI will automatically generate structured documents for you.",
-    prev:"Previous", next:"Next", compare:"Compare", evolution:"Evolution" },
+    prev:"Previous", next:"Next", compare:"Compare", evolution:"Evolution",
+    historyBanner:"You are viewing v{0} (historical). Latest is v{1}.", viewLatest:"View Latest", nextSteps:"Next Steps" },
   zh: { title:"生成结果", generating:"生成中...", copy:"复制", copied:"已复制", export:"导出",
-    historyBanner:"你正在查看 v{0}（历史版本）。最新版本是 v{1}。", viewLatest:"查看最新", nextSteps:"下一步",
     thinking:"AI 正在思考...", emptyTitle:"PM Copilot",
     emptyDesc:"描述你的产品想法，AI 将自动生成结构化文档。",
-    prev:"上一版", next:"下一版", compare:"对比", evolution:"演进" },
+    prev:"上一版", next:"下一版", compare:"对比", evolution:"演进",
+    historyBanner:"你正在查看 v{0}（历史版本）。最新版本是 v{1}。", viewLatest:"查看最新", nextSteps:"下一步" },
 }
 
 const EMPTY_FEATURES_ZH = [
@@ -98,6 +99,7 @@ export function MarkdownViewer({
   currentVersion, versions, viewingVn, latestVn, bestVn, isLatest, isBest,
   onSelectVersion, onViewBest, qualityGate, onDiscardVersion,
   compareView, onCompare, onCloseCompare, evolutionInsight, onShowEvolution, onCloseEvolution,
+  scrollToStepId,
 }: MarkdownViewerProps) {
   const [copied, setCopied] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -112,9 +114,37 @@ export function MarkdownViewer({
   }
   const fullContent = completedContent + streamingBlock
 
-  useEffect(() => { const el = scrollRef.current; if (el && !userScrolledUpRef.current) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" }) }, [fullContent])
+  // Auto-scroll: follows AI output unless user manually scrolls up.
+  // Resumes auto-scroll when user scrolls back to bottom.
+  useEffect(() => {
+    const el = scrollRef.current
+    if (el && !userScrolledUpRef.current) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" })
+  }, [fullContent])
+
   useEffect(() => { if (phase === "generating") userScrolledUpRef.current = false }, [phase])
-  const handleScroll = useCallback(() => { const el = scrollRef.current; if (el) userScrolledUpRef.current = el.scrollTop + el.clientHeight < el.scrollHeight - 40 }, [])
+
+  // Smart scroll lock: pause when user scrolls up, resume when back at bottom
+  const handleScroll = useCallback(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 40
+    userScrolledUpRef.current = !atBottom
+  }, [])
+
+  // Jump to section when workflow step is clicked
+  useEffect(() => {
+    if (!scrollToStepId || !scrollRef.current) return
+    const titleText = SECTION_TITLES[scrollToStepId as WorkflowStepId]?.[language] ?? ""
+    const cleanTitle = titleText.replace(/^##\s*/, "").trim()
+    if (!cleanTitle) return
+    const headings = scrollRef.current.querySelectorAll("h2")
+    for (const h of headings) {
+      if (h.textContent?.trim() === cleanTitle) {
+        scrollRef.current.scrollTop = h.offsetTop - scrollRef.current.offsetTop - 12
+        break
+      }
+    }
+  }, [scrollToStepId, language])
 
   const getFullText = useCallback(() => sections.map((s) => (SECTION_TITLES[s.stepId as WorkflowStepId]?.[language] ?? s.title) + s.content).join(""), [sections, language])
   const handleCopy = useCallback(async () => { try { await navigator.clipboard.writeText(getFullText()); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch {} }, [getFullText])
@@ -147,6 +177,13 @@ export function MarkdownViewer({
           )}
           {currentVersion && (
             <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${MAT_BG[currentVersion.maturity] || "border-neutral-200 bg-neutral-50"}`}>{currentVersion.maturity} · {currentVersion.score}</span>
+          )}
+          {/* Compare / Evolution — in header for discoverability */}
+          {hasVersions && phase === "completed" && (
+            <div className="flex items-center gap-0.5 border-r border-neutral-100 pr-1 mr-1">
+              <button onClick={() => { const other = idx === 0 ? versions[1].versionNumber : versions[0].versionNumber; onCompare(viewingVn!, other) }} className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 transition-colors"><GitCompare className="h-3 w-3" />{t.compare}</button>
+              <button onClick={onShowEvolution} className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 transition-colors"><TrendingUp className="h-3 w-3" />{t.evolution}</button>
+            </div>
           )}
           {sections.length > 0 && (
             <>
@@ -186,14 +223,6 @@ export function MarkdownViewer({
             </article>
             {activeStreamingStep && <span className="inline-block w-1.5 h-4 bg-blue-500 animate-pulse ml-0.5 align-middle" />}
             {phase === "generating" && !fullContent && <div className="flex items-center gap-2 text-neutral-400 text-sm"><Loader2 className="h-4 w-4 animate-spin" /><span>{t.thinking}</span></div>}
-          </div>
-        )}
-
-        {/* Version actions */}
-        {!compareView && !evolutionInsight && viewingVn && hasVersions && phase === "completed" && (
-          <div className="px-6 pb-4 flex items-center gap-2">
-            <button onClick={() => { const other = idx === 0 ? versions[1].versionNumber : versions[0].versionNumber; onCompare(viewingVn, other) }} className="flex items-center gap-1 text-[10px] text-neutral-400 hover:text-neutral-600 transition-colors"><GitCompare className="h-3 w-3" />{t.compare}</button>
-            <button onClick={onShowEvolution} className="flex items-center gap-1 text-[10px] text-neutral-400 hover:text-neutral-600 transition-colors"><TrendingUp className="h-3 w-3" />{t.evolution}</button>
           </div>
         )}
       </div>

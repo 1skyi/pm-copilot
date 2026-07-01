@@ -1,13 +1,14 @@
-﻿"use client"
+"use client"
 
 import { useEffect, useRef } from "react"
 import { WorkflowStep, WorkflowStepStatus, Language } from "@/types"
 import { cn } from "@/lib/utils"
-import { Check, Loader2, Circle, XCircle } from "lucide-react"
+import { Check, Loader2, Circle, XCircle, ArrowRight } from "lucide-react"
 
 interface WorkflowPanelProps {
   steps: WorkflowStep[]
   language?: Language
+  onStepClick?: (stepId: string) => void
 }
 
 const statusConfig: Record<
@@ -27,7 +28,7 @@ const STATUS_LABELS: Record<WorkflowStepStatus, Record<Language, string>> = {
   ERROR: { en: "Error", zh: "失败" },
 }
 
-export function WorkflowPanel({ steps, language = "en" }: WorkflowPanelProps) {
+export function WorkflowPanel({ steps, language = "en", onStepClick }: WorkflowPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const runningIndex = steps.findIndex((s) => s.status === "RUNNING")
 
@@ -55,7 +56,14 @@ export function WorkflowPanel({ steps, language = "en" }: WorkflowPanelProps) {
           const isError = step.status === "ERROR"
 
           return (
-            <div key={step.id} className="relative flex items-start gap-3">
+            <div
+              key={step.id}
+              onClick={() => isCompleted && onStepClick?.(step.id)}
+              className={cn(
+                "relative flex items-start gap-3",
+                isCompleted && onStepClick && "cursor-pointer hover:bg-neutral-50 rounded-md -mx-2 px-2 transition-colors",
+              )}
+            >
               {!isLast && (
                 <div
                   className={cn(
@@ -85,7 +93,7 @@ export function WorkflowPanel({ steps, language = "en" }: WorkflowPanelProps) {
               <div className="flex-1 pb-4 min-w-0">
                 <p
                   className={cn(
-                    "text-sm truncate",
+                    "text-sm truncate flex items-center gap-1",
                     isCompleted
                       ? "text-neutral-600"
                       : isRunning
@@ -96,6 +104,9 @@ export function WorkflowPanel({ steps, language = "en" }: WorkflowPanelProps) {
                   )}
                 >
                   {step.name}
+                  {isCompleted && onStepClick && (
+                    <ArrowRight className="h-2.5 w-2.5 text-neutral-300 opacity-0 group-hover:opacity-100 flex-shrink-0" />
+                  )}
                 </p>
                 {isRunning && step.runningText && (
                   <p className="text-[10px] text-blue-500 mt-0.5 animate-pulse">

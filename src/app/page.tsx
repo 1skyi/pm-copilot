@@ -32,7 +32,9 @@ export default function Home() {
   const [optimizeCallback, setOptimizeCallback] = useState<(() => void) | null>(null)
 
   // Compare & Evolution
-  const [compareView, setCompareView] = useState<{ vA: number; vB: number } | null>(null)
+  const [scrollToStepId, setScrollToStepId] = useState<string | null>(null)
+
+<{ vA: number; vB: number } | null>(null)
   const [evolutionInsight, setEvolutionInsight] = useState<string | null>(null)
 
   // ─── Derived ───
@@ -147,7 +149,9 @@ export default function Home() {
     setEvolutionInsight(await coordinator.generateEvolutionInsight(language))
   }, [language])
 
-  const handleCloseEvolution = useCallback(() => setEvolutionInsight(null), [])
+  const handleStepClick = useCallback((stepId: string) => { setScrollToStepId(stepId); setTimeout(() => setScrollToStepId(null), 100) }, [])
+
+(() => setEvolutionInsight(null), [])
 
   return (
     <MainLayout
@@ -178,6 +182,7 @@ export default function Home() {
           qualityGate={qualityGate}
           onDiscardVersion={handleDiscardVersion}
           onViewBest={handleViewBest}
+          onStepClick={handleStepClick}
         />
       }
       result={
@@ -212,6 +217,7 @@ export default function Home() {
           evolutionInsight={evolutionInsight}
           onShowEvolution={handleShowEvolution}
           onCloseEvolution={handleCloseEvolution}
+          scrollToStepId={scrollToStepId}
         />
       }
     />

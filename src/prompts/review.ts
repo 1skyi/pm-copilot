@@ -1,4 +1,4 @@
-﻿import { Language } from "@/types"
+import { Language } from "@/types"
 
 export const REVIEW_PROMPT: Record<Language, string> = {
   en: `# Role
@@ -32,6 +32,14 @@ Output ONLY valid JSON. No markdown. No explanations outside the JSON.
 - 76-90 MVP Ready: Production-quality spec, minor polish needed
 - 91-100 Market Ready: Comprehensive, validated, competitive differentiation clear
 - 95+ Investment Ready: Market-validated, scalable business model, defensible moat
+
+# Version Comparison (V2+ reviews only)
+When the user prompt includes a previous review JSON:
+1. Compare current spec with previous review issues
+2. Do NOT re-flag issues that were already fixed (resolved) as new problems
+3. If an old problem persists, flag it again with updated analysis
+4. If a problem got worse (regressed), explain why
+5. Focus on what actually changed between versions
 
 # Issue Rules
 - P0 = Blocks development. Must fix before writing code.
@@ -71,6 +79,14 @@ Output ONLY valid JSON. No markdown. No explanations outside the JSON.
 - 76-90 MVP Ready：生产级规格，少量润色即可
 - 91-100 Market Ready：全面、已验证、竞争差异化清晰
 - 95+ Investment Ready：市场验证通过，商业模式可规模化，有护城河
+
+# 版本对比（仅V2+审查）
+当用户提示中包含上一轮审查 JSON 时：
+1. 将当前规格与上一轮审查问题进行对比
+2. 不要将已修复（resolved）的问题重新标记为新问题
+3. 如果旧问题持续存在，重新标记并更新分析
+4. 如果问题恶化（regressed），说明原因
+5. 聚焦于版本之间实际发生了哪些变化
 
 # 问题规则
 - P0 = 阻碍开发。必须在写代码前修复。

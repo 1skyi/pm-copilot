@@ -83,6 +83,13 @@ export class Coordinator {
         } else {
           user = language === "zh" ? `产品想法：${idea}` : `Product Idea: ${idea}`
         }
+        // REVIEW STEP: inject previous review for state-aware comparison
+        if (stepId === "ai-review" && prevVersion) {
+          const prevReviewJson = JSON.stringify(prevVersion.review, null, 2)
+          user = language === "zh"
+            ? user + "\n\n【上一轮审查结果 — 请对比并标注问题状态】\n" + prevReviewJson + "\n\n⚠️ 重要审查规则：\n1. 与上一轮对比，标注每个问题是「已解决」「持续存在」「退化」还是「新问题」\n2. 已解决的问题不要再列为 P0\n3. 持续存在的问题需要说明为什么没有解决\n4. 退化问题需要说明原因"
+            : user + "\n\n[Previous Review — compare and classify issue status]\n" + prevReviewJson + "\n\nIMPORTANT Review Rules:\n1. Compare with previous review. Classify each issue as ``resolved``, ``persisting``, ``regressed``, or ``new``\n2. Do NOT re-list resolved issues as P0\n3. For persisting issues, explain why they weren\`\`t fixed\n4. For regressed issues, explain the cause"
+        }
         let content = ""
         await provider.generateStream(sys, user, config, (delta) => {
           content += delta
@@ -207,12 +214,6 @@ export class Coordinator {
           consecutiveLowGain: this.consecutiveP0NoDecrease,
           previousP0Ids: prevP0Ids,
         }
-      }
-
-      // Score fluctuation ±3 without improvement
-      const scoreDelta = review.score - prev.score
-      if (Math.abs(scoreDelta) <= 3 && p0Delta >= 0) {
-        this.consecutiveP0NoDecrease++
       }
     }
 

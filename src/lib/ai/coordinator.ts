@@ -68,7 +68,21 @@ export class Coordinator {
 
       try {
         const sys = SYSTEM_PROMPTS[stepId]?.[language] ?? SYSTEM_PROMPTS[stepId]?.en ?? ""
-        const user = language === "zh" ? `产品想法：${idea}` : `Product Idea: ${idea}`
+        let user: string
+        if (prevVersion) {
+          // STATE MACHINE: pass parent version context + review issues. AI must REFINE, not regenerate.
+          const parentSection = prevVersion.sections.find((s) => s.stepId === stepId)
+          const parentContent = parentSection ? parentSection.content.slice(0, 2000) : ""
+          const reviewSummary = prevVersion.review.issues
+            .filter((i) => i.priority === "P0" || i.priority === "P1")
+            .map((i) => `[${i.priority}] ${i.field}: ${i.problem}`)
+            .join("\n")
+          user = language === "zh"
+            ? `产品想法：${idea}\n\n【上一版本 (v${prevVersion.versionNumber}) 已生成的${stepId}内容】\n${parentContent}\n\n【需要修复的审查问题】\n${reviewSummary}\n\n⚠️ 重要：请基于上一版本精炼和修复，不要从零重写。只修改审查指出的问题，保持其他部分不变。`
+            : `Product Idea: ${idea}\n\n[Previous version (v${prevVersion.versionNumber}) output for ${stepId}]\n${parentContent}\n\n[Review issues to fix]\n${reviewSummary}\n\nIMPORTANT: Refine the previous version. Only fix the review issues listed above. DO NOT rewrite from scratch. Keep unchanged parts as-is.`
+        } else {
+          user = language === "zh" ? `产品想法：${idea}` : `Product Idea: ${idea}`
+        }
         let content = ""
         await provider.generateStream(sys, user, config, (delta) => {
           content += delta

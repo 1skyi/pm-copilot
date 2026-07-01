@@ -99,7 +99,8 @@ export default function Home() {
     }
     if (p === "completed") {
       setStreamingContent({}); setActiveStreamingStep(null)
-      // NOTE: Version is created AFTER onComplete, so sync() is deferred to onConvergence
+      // Sync immediately to guarantee Version Timeline updates even if onConvergence is skipped
+      sync()
     }
   }, [sync])
 

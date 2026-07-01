@@ -33,8 +33,7 @@ export default function Home() {
 
   // Compare & Evolution
   const [scrollToStepId, setScrollToStepId] = useState<string | null>(null)
-
-<{ vA: number; vB: number } | null>(null)
+  const [compareView, setCompareView] = useState<{ vA: number; vB: number } | null>(null)
   const [evolutionInsight, setEvolutionInsight] = useState<string | null>(null)
 
   // ─── Derived ───
@@ -151,7 +150,7 @@ export default function Home() {
 
   const handleStepClick = useCallback((stepId: string) => { setScrollToStepId(stepId); setTimeout(() => setScrollToStepId(null), 100) }, [])
 
-(() => setEvolutionInsight(null), [])
+  const handleCloseEvolution = useCallback(() => setEvolutionInsight(null), [])
 
   return (
     <MainLayout

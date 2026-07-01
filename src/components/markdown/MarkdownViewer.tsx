@@ -178,11 +178,21 @@ export function MarkdownViewer({
           {currentVersion && (
             <span className={`text-[9px] px-1.5 py-0.5 rounded-full border ${MAT_BG[currentVersion.maturity] || "border-neutral-200 bg-neutral-50"}`}>{currentVersion.maturity} · {currentVersion.score}</span>
           )}
-          {/* Compare / Evolution — in header for discoverability */}
-          {hasVersions && phase === "completed" && (
+          {/* Compare / Evolution — always visible in header */}
+          {phase === "completed" && (
             <div className="flex items-center gap-0.5 border-r border-neutral-100 pr-1 mr-1">
-              <button onClick={() => { const other = idx === 0 ? versions[1].versionNumber : versions[0].versionNumber; onCompare(viewingVn!, other) }} className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 transition-colors"><GitCompare className="h-3 w-3" />{t.compare}</button>
-              <button onClick={onShowEvolution} className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 transition-colors"><TrendingUp className="h-3 w-3" />{t.evolution}</button>
+              <button
+                onClick={() => { const other = idx === 0 ? versions[1].versionNumber : versions[0].versionNumber; onCompare(viewingVn!, other) }}
+                disabled={!hasVersions}
+                title={!hasVersions ? (language === "zh" ? "需要至少 2 个版本才能对比" : "Need at least 2 versions to compare") : t.compare}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              ><GitCompare className="h-3 w-3" />{t.compare}</button>
+              <button
+                onClick={onShowEvolution}
+                disabled={!hasVersions}
+                title={!hasVersions ? (language === "zh" ? "需要至少 2 个版本才能查看演进" : "Need at least 2 versions for evolution") : t.evolution}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-neutral-400 hover:text-neutral-600 hover:bg-neutral-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+              ><TrendingUp className="h-3 w-3" />{t.evolution}</button>
             </div>
           )}
           {sections.length > 0 && (
